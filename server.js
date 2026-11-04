@@ -748,3 +748,6 @@ server.keepAliveTimeout = 65000;
 server.listen(PORT, '0.0.0.0', () => console.log(`שרת קליטת עובדים פעיל: http://localhost:${PORT}`));
 process.on('SIGTERM', () => { server.close(); db.close(); process.exit(0); });
 module.exports = { server };
+app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
+app.get('/apply', (req, res) => res.sendFile(path.join(__dirname, 'apply.html')));
+app.get('/app', (req, res) => res.sendFile(path.join(__dirname, 'app.html')));
