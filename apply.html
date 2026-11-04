@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#4f46e5">
+<meta name="robots" content="noindex,nofollow">
+<title>קליטת עובד/ת חדש/ה</title>
+<link rel="icon" href="/icon-192.png">
+<link rel="stylesheet" href="/style.css">
+<style>
+.wrap{max-width:640px;margin:0 auto;padding:22px 14px 50px}
+.top{border-radius:26px;overflow:hidden;position:relative;margin-bottom:16px}
+.top::before{content:"";display:block;height:6px;background:linear-gradient(90deg,#4f46e5,#7c3aed,#14b8a6)}
+.head{display:flex;gap:14px;align-items:center}
+.logo{width:62px;height:62px;border-radius:19px;background:linear-gradient(135deg,var(--pri),var(--pri2));color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:1.15rem;flex:none}
+.head h1{margin:0;font-size:1.5rem}
+.head p{margin:2px 0 0;color:var(--mut);font-size:.92rem}
+.welcome{background:var(--priBg);border-radius:18px;padding:16px;margin-top:16px;border:1px solid #dfe2ff}
+.feats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
+.feat{background:#f6f7fc;border:1px solid var(--line);border-radius:14px;padding:11px 12px;font-size:.88rem;font-weight:600;display:flex;gap:8px;align-items:center}
+.sec-h{display:flex;align-items:center;gap:10px;margin-bottom:2px}
+.sec-h .ic{width:40px;height:40px;border-radius:12px;background:var(--priBg);display:flex;align-items:center;justify-content:center;font-size:1.2rem}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:520px){.row2,.feats{grid-template-columns:1fr}}
+.help{font-size:.82rem;color:var(--mut);margin-top:4px}
+.gopts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.gopt{border:1.5px solid var(--line);border-radius:14px;padding:13px;text-align:center;cursor:pointer;font-weight:600;background:#fff;min-height:50px}
+.gopt.on{border-color:var(--pri);background:var(--priBg);color:var(--pri)}
+.invalid .gopt{border-color:var(--err)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card top">
+    <div class="head"><div class="logo">אודי</div><div><h1>קליטת עובד/ת חדש/ה</h1><p id="company">...</p></div></div>
+    <div class="welcome"><b>👋 שלום וברוכים הבאים!</b><br>יצרנו עבורכם תהליך קליטה מהיר ומאובטח המותאם במיוחד לסמארטפון. מלאו את פרטיכם הראשוניים, ותועברו מיד למילוי טפסי הקליטה והחתימה הדיגיטלית.</div>
+    <div class="feats"><div class="feat">📷 צילום ת"ז ואישורים בנייד</div><div class="feat">🔒 חתימה דיגיטלית מאובטחת</div></div>
+  </div>
+  <form class="card" id="f" novalidate>
+    <div class="sec-h"><div class="ic">👤</div><h2 style="margin:0">הזנת פרטים מזהים לתחילת קליטה</h2></div>
+    <p class="muted" style="margin:4px 0 0">הפרטים ישמשו לפתיחת תיק העובד שלכם במערכת משאבי אנוש.</p>
+    <hr style="border:0;border-top:1px solid var(--line);margin:16px 0 0">
+    <div class="field"><label class="f">שם מלא בעברית <span class="req">*</span></label><input type="text" id="name" placeholder="למשל: רחל שפירא" autocomplete="name"><div class="err-msg" hidden></div></div>
+    <div class="row2">
+      <div class="field"><label class="f">מספר תעודת זהות (9 ספרות) <span class="req">*</span></label><input type="text" id="idn" inputmode="numeric" maxlength="9" dir="ltr" style="text-align:right" autocomplete="off"><div class="err-msg" hidden></div></div>
+      <div class="field"><label class="f">מגדר (לקביעת טופס משטרה נכון) <span class="req">*</span></label>
+        <div class="gopts" id="g"><div class="gopt" data-v="female">אישה</div><div class="gopt" data-v="male">גבר</div></div><div class="err-msg" hidden></div></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label class="f">טלפון נייד <span class="req">*</span></label><input type="tel" id="phone" dir="ltr" style="text-align:right" autocomplete="tel"><div class="err-msg" hidden></div></div>
+      <div class="field"><label class="f">דוא"ל</label><input type="email" id="email" dir="ltr" style="text-align:right" autocomplete="email"><div class="err-msg" hidden></div></div>
+    </div>
+    <button class="btn" id="go" type="submit" style="width:100%;margin-top:22px">המשך למילוי הטפסים ←</button>
+    <p class="help" style="text-align:center">המידע נשמר בצורה מאובטחת ומשמש לצורכי קליטה בלבד.</p>
+  </form>
+  <div class="card" id="closed" hidden style="text-align:center"><div style="font-size:3rem">🔒</div><h2>ההרשמה העצמית סגורה כרגע</h2><p class="muted">פנו אל משאבי אנוש לקבלת קישור אישי.</p></div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+let gender = '';
+try { const t = localStorage.getItem('onb_tok'); if (t) fetch('/api/e/' + t).then((r) => r.ok && (location.replace('/e/' + t))); } catch {}
+fetch('/api/apply/info').then((r) => r.json()).then((i) => { $('company').textContent = i.company + (i.line ? ' · ' + i.line : ''); if (!i.enabled) { $('f').hidden = true; $('closed').hidden = false; } });
+$('g').addEventListener('click', (e) => { const o = e.target.closest('.gopt'); if (!o) return; gender = o.dataset.v; [...$('g').children].forEach((c) => c.classList.toggle('on', c === o)); clear($('g')); });
+function validId(v) { const s = v.replace(/\D/g, ''); if (s.length < 5 || s.length > 9) return false; const p = s.padStart(9, '0'); let t = 0; for (let i = 0; i < 9; i++) { let n = +p[i] * ((i % 2) + 1); if (n > 9) n -= 9; t += n; } return t % 10 === 0; }
+function mark(el, msg) { const f = el.closest('.field'); f.classList.add('invalid'); const e = f.querySelector('.err-msg'); e.textContent = msg; e.hidden = false; }
+function clear(el) { const f = el.closest('.field'); f.classList.remove('invalid'); f.querySelector('.err-msg').hidden = true; }
+['name', 'idn', 'phone', 'email'].forEach((k) => $(k).addEventListener('input', () => clear($(k))));
+$('f').addEventListener('submit', async (ev) => {
+  ev.preventDefault(); let bad = false;
+  const name = $('name').value.trim(), idn = $('idn').value.trim(), phone = $('phone').value.trim(), email = $('email').value.trim();
+  if (name.split(/\s+/).filter(Boolean).length < 2) { mark($('name'), 'יש להזין שם פרטי ושם משפחה'); bad = true; }
+  if (!validId(idn)) { mark($('idn'), 'מספר תעודת זהות לא תקין'); bad = true; }
+  if (!gender) { mark($('g'), 'יש לבחור מגדר'); bad = true; }
+  if (phone.replace(/\D/g, '').length < 9) { mark($('phone'), 'מספר טלפון לא תקין'); bad = true; }
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { mark($('email'), 'כתובת דוא"ל לא תקינה'); bad = true; }
+  if (bad) return;
+  $('go').disabled = true; $('go').textContent = 'פותח תיק...';
+  try {
+    const r = await fetch('/api/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ full_name: name, id_number: idn, gender, phone, email }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'שגיאה');
+    try { localStorage.setItem('onb_tok', j.token); } catch {}
+    location.href = '/e/' + j.token;
+  } catch (e) { $('go').disabled = false; $('go').textContent = 'המשך למילוי הטפסים ←'; mark($('idn'), e.message); }
+});
+</script>
+</body>
+</html>

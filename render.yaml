@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: onboarding
+    runtime: docker
+    plan: starter        # נדרש תשלום כדי לצרף דיסק קבוע
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false      # תזינו סיסמה בעת היצירה
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DATA_DIR
+        value: /data
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 5
