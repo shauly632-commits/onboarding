@@ -729,7 +729,8 @@ const server = http.createServer(async (req, res) => {
       if (req.method !== 'GET') {
         const o = req.headers.origin;
         if (o && new URL(o).host !== req.headers.host) throw new HttpError(403, 'מקור לא מורשה');
-      }for (const r of routes) {
+      }
+      for (const r of routes) {
       if (r.method !== req.method) continue;
       const m = r.re.exec(pathname);
       if (m) return await r.fn(req, res, m);
