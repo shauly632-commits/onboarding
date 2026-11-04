@@ -729,19 +729,16 @@ const server = http.createServer(async (req, res) => {
       if (req.method !== 'GET') {
         const o = req.headers.origin;
         if (o && new URL(o).host !== req.headers.host) throw new HttpError(403, 'מקור לא מורשה');
-      }
-      for (const r of routes) {
-        if (r.method !== req.method) continue;
-        const m = r.re.exec(pathname);
-        if (m) return await r.fn(req, res, m);
-      }
-      throw new HttpError(404, 'לא נמצא');
+      }for (const r of routes) {
+      if (r.method !== req.method) continue;
+      const m = r.re.exec(pathname);
+      if (m) return await r.fn(req, res, m);
     }
     if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed');
     if (pathname === '/apply' || pathname === '/apply.html') return serveStatic(req, res, '/apply.html');
-if (pathname === '/admin' || pathname === '/admin.html') return serveStatic(req, res, '/admin.html');
+    if (pathname === '/admin' || pathname === '/admin.html') return serveStatic(req, res, '/admin.html');
+    if (pathname === '/app' || pathname === '/app.html') return serveStatic(req, res, '/app.html');
     serveStatic(req, res, pathname);
-  } catch (e) {
     if (!(e instanceof HttpError)) console.error(e);
     if (!res.headersSent) send(res, e.code || 500, { error: e instanceof HttpError ? e.message : 'שגיאת שרת' });
   }
