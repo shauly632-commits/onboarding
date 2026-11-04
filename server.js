@@ -14,7 +14,7 @@ const { sendMail } = require('./mailer');
 
 const PUBLIC_DIR = __dirname;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const PUBLIC_DIR = path.join(__dirname, 'public');
+
 const DOCS_DIR = path.join(__dirname, 'docs');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const MAX_BODY = 20 * 1024 * 1024;
