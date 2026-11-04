@@ -12,7 +12,7 @@ const { DatabaseSync } = require('node:sqlite');
 const seedTemplates = require('./seed');
 const { sendMail } = require('./mailer');
 
-const PORT = +process.env.PORT || 3000;
+const PUBLIC_DIR = __dirname;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const DOCS_DIR = path.join(__dirname, 'docs');
@@ -738,6 +738,8 @@ const server = http.createServer(async (req, res) => {
       throw new HttpError(404, 'לא נמצא');
     }
     if (req.method !== 'GET') throw new HttpError(405, 'Method not allowed');
+    if (pathname === '/apply' || pathname === '/apply.html') return serveStatic(req, res, '/apply.html');
+if (pathname === '/admin' || pathname === '/admin.html') return serveStatic(req, res, '/admin.html');
     serveStatic(req, res, pathname);
   } catch (e) {
     if (!(e instanceof HttpError)) console.error(e);
