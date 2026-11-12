@@ -38,6 +38,14 @@
 .saved{font-size:.85rem;color:var(--mut);min-height:1.3em;margin-top:8px}
 .center{text-align:center;padding:40px 14px}
 .big{font-size:3.2rem}
+.checklist{list-style:none;margin:0 0 14px;padding:0}
+.checklist li{display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line);font-size:.93rem}
+.checklist li:last-child{border:0}
+.checklist .ck{flex:none;width:24px;height:24px;border-radius:99px;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800}
+.checklist .y{background:var(--okbg);color:var(--ok)}.checklist .n{background:#eef0f6;color:var(--mut)}
+.tipwrap{position:relative;display:block}
+.tipwrap .btn{width:100%}
+.btn:disabled{background:#c9ccd9;box-shadow:none;cursor:not-allowed;color:#fff}
 </style>
 </head>
 <body>
@@ -81,7 +89,7 @@ function home() {
   app.textContent = '';
   app.append(brand(), $e('div', { class: 'hero' },
     $e('h1', { text: 'שלום ' + state.employee.full_name.split(' ')[0] + ' 👋' }),
-    $e('p', { text: done === as.length && as.length ? 'כל הטפסים הוגשו ותיק הקליטה הועבר למשאבי אנוש. תודה רבה!' : 'ברוכים הבאים! נשארו ' + (as.length - done) + ' טפסים למילוי. אפשר לעצור ולהמשיך בכל זמן: ההתקדמות נשמרת.' }),
+    $e('p', { text: state.approved ? 'התיק אושר ונקלטת כעובד/ת. ברוכים הבאים לצוות! 🎉' : state.submitted_at ? 'התיק נשלח למשאבי אנוש לבדיקה סופית. תודה רבה!' : done === as.length && as.length ? 'כל הטפסים מולאו! נשאר רק לשלוח את התיק למשאבי אנוש (למטה).' : 'ברוכים הבאים! נשארו ' + (as.length - done) + ' טפסים למילוי. אפשר לעצור ולהמשיך בכל זמן: ההתקדמות נשמרת.' }),
     meta.length ? $e('div', { class: 'meta' }, meta.map((m) => $e('span', { text: m }))) : null,
     $e('div', { class: 'bar' }, $e('i', { style: 'width:' + (as.length ? (100 * done / as.length) : 0) + '%' }))));
   if (!as.length) app.append($e('div', { class: 'card center muted', text: 'עדיין לא הוקצו טפסים.' }));
@@ -93,9 +101,36 @@ function home() {
       $e('div', { class: 't' }, $e('b', { text: a.template.title }), $e('span', { text: a.template.description || '' })),
       $e('span', { class: 'chip' + (ok ? ' ok' : pend ? ' err' : ''), text: ok ? 'הוגש' : pend ? 'נדרש תיקון' : (Object.keys(a.data).length ? 'טיוטה' : 'ממתין') })));
   });
+  if (as.length) app.append(finalCard(as));
   if (installEvt) app.append($e('button', { class: 'btn sec', style: 'width:100%;margin-top:12px', text: '📲 התקנה כאפליקציה בטלפון', onclick: () => { installEvt.prompt(); installEvt = null; home(); } }));
   else if (/iPhone|iPad/.test(navigator.userAgent) && !navigator.standalone)
     app.append($e('p', { class: 'muted', style: 'text-align:center;margin-top:14px;font-size:.9rem', text: 'להתקנה כאפליקציה: לחצו על כפתור השיתוף בדפדפן ובחרו "הוסף למסך הבית".' }));
+}
+
+// רשימת ביצוע + כפתור שליחה סופית שנעול עד שכל הטפסים הושלמו
+function finalCard(as) {
+  if (state.submitted_at) return $e('div', { class: 'card center', style: 'margin-top:6px' }, $e('div', { class: 'big', text: state.approved ? '🎉' : '📨' }),
+    $e('h2', { text: state.approved ? 'נקלטת בהצלחה!' : 'הפרטים נשלחו' }), $e('p', { class: 'muted', text: state.approved ? 'משאבי אנוש אישרו את התיק שלך.' : 'הפרטים שלך נשלחו למשאבי אנוש לבדיקה סופית. נעדכן אותך בהמשך.' }));
+  const missing = as.filter((a) => a.status !== 'submitted');
+  const rejected = as.some((a) => Object.values(a.exemptions || {}).some((x) => x.status === 'rejected'));
+  const ready = !missing.length && !rejected;
+  const tip = ready ? '' : 'יש להשלים ולהגיש את כל הטפסים לפני השליחה (' + missing.length + ' חסרים)';
+  const btn = $e('button', { class: 'btn', text: '📨 שליחה למשאבי אנוש', disabled: !ready, title: tip, onclick: async () => {
+    btn.disabled = true; btn.textContent = 'שולח...';
+    try { await api('/submit', { method: 'POST' }); await load(); thanks(); }
+    catch (e) { toast(e.message, true); btn.disabled = false; btn.textContent = '📨 שליחה למשאבי אנוש'; }
+  } });
+  return $e('div', { class: 'card', style: 'margin-top:6px' }, $e('h3', { style: 'margin:0 0 10px', text: 'רשימת ביצוע' }),
+    $e('ul', { class: 'checklist' }, as.map((a) => { const ok = a.status === 'submitted'; return $e('li', {}, $e('span', { class: 'ck ' + (ok ? 'y' : 'n'), text: ok ? '✓' : '' }), $e('span', { style: ok ? '' : 'color:var(--mut)', text: a.template.title })); })),
+    $e('span', { class: 'tipwrap', title: tip }, btn),
+    ready ? null : $e('p', { class: 'muted', style: 'font-size:.85rem;margin:8px 0 0;text-align:center', text: '🔒 ' + tip }));
+}
+function thanks() {
+  app.textContent = '';
+  app.append(brand(), $e('div', { class: 'card center' }, $e('div', { class: 'big', text: '📨' }), $e('h2', { text: 'תודה, ' + state.employee.full_name.split(' ')[0] + '!' }),
+    $e('p', { text: 'הפרטים שלך נשלחו למשאבי אנוש לבדיקה סופית.' }), $e('p', { class: 'muted', text: 'אפשר לסגור את החלון. אם יידרש תיקון, נחזור אליך.' }),
+    $e('button', { class: 'btn ghost', text: 'חזרה לטפסים', onclick: home })));
+  scrollTo(0, 0);
 }
 
 function openForm(tplId) {

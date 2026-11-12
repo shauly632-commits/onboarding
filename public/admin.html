@@ -71,6 +71,19 @@ tr.click{cursor:pointer}tr.click:hover td{background:#fafbff}
 iframe{border:0;width:100%;height:100%;display:block}
 .exrow{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:14px 0;border-bottom:1px solid var(--line)}
 .exrow:last-child{border:0}
+.vsw{display:inline-flex;background:#f6f7fc;border:1px solid var(--line);border-radius:12px;padding:3px}
+.vsw button{border:0;background:none;padding:.35em .8em;border-radius:9px;font-weight:700;color:var(--mut);cursor:pointer}
+.vsw button.on{background:#fff;color:var(--pri);box-shadow:0 2px 6px rgba(27,33,64,.08)}
+.kanban{display:grid;grid-template-columns:repeat(4,minmax(240px,1fr));gap:14px;padding:16px 22px 22px;overflow-x:auto;border-top:1px solid var(--line)}
+.kcol{background:#f6f7fc;border-radius:16px;padding:10px;min-height:160px}
+.kcol h4{margin:4px 6px 10px;display:flex;justify-content:space-between;align-items:center;font-size:.95rem}
+.kc{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px;cursor:pointer;transition:.15s}
+.kc:hover{border-color:#c7caf7;transform:translateY(-1px)}
+.kc .who{gap:10px}.kc .avatar{width:36px;height:36px;font-size:.85rem}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;color:var(--mut)}
+.live i{width:8px;height:8px;border-radius:99px;background:#9aa1b9}
+.live.on i{background:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.18)}
+.hirebar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:16px 18px;border-radius:16px;margin-bottom:16px}
 </style>
 </head>
 <body>
@@ -80,6 +93,9 @@ iframe{border:0;width:100%;height:100%;display:block}
 const { $e } = Forms;
 const root = document.getElementById('root');
 let me = null, view = 'employees', list = [], cfg = { capacity: 180 }, pendingEx = 0, tplCount = 0, simTarget = '', simDevice = 'phone';
+let detailId = null, boardMode = 'table';
+const flt = { q: '', s: '', d: '' };
+try { boardMode = localStorage.getItem('boardMode') || 'table'; } catch {}
 
 async function api(path, method = 'GET', body) {
   const r = await fetch('/api' + path, { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
@@ -97,7 +113,27 @@ const initials = (n) => (n || '?').trim().split(/\s+/).map((w) => w[0]).slice(0,
 function modal(content, wide) { const m = $e('div', { class: 'modal', onclick: (e) => e.target === m && m.remove() }, $e('div', { class: 'card', style: wide ? 'max-width:780px' : '' }, content)); document.body.append(m); return m; }
 async function copy(text) { try { await navigator.clipboard.writeText(text); toast('הקישור הועתק ✓'); } catch { prompt('העתיקו את הקישור:', text); } }
 const waLink = (e) => 'https://wa.me/' + (e.phone || '').replace(/\D/g, '').replace(/^0/, '972') + '?text=' + encodeURIComponent('שלום ' + e.full_name.split(' ')[0] + ', ברוכים הבאים! אנא מלאו את טפסי הקליטה בקישור:\n' + empUrl(e.token));
-const STATUS = { new: ['טרם התחיל', 'gray'], progress: ['בתהליך מילוי', ''], done: ['הושלם', 'ok'] };
+const STATUS = { new: ['טרם התחיל', 'gray'], progress: ['בתהליך מילוי', ''], review: ['ממתין לבדיקה', 'pri'], approved: ['נקלט ואושר', 'ok'] };
+
+// ---------- עדכונים בזמן אמת ----------
+let es = null, liveOn = false, livePending = false;
+const liveDot = () => $e('span', { class: 'live' + (liveOn ? ' on' : ''), title: liveOn ? 'הלוח מתעדכן בזמן אמת' : 'מתחבר מחדש...' }, $e('i'), liveOn ? 'עדכון חי' : 'לא מחובר');
+function connectLive() {
+  if (es) es.close();
+  es = new EventSource('/api/events');
+  es.onopen = () => { liveOn = true; document.querySelectorAll('.live').forEach((n) => n.replaceWith(liveDot())); };
+  es.onerror = () => { liveOn = false; document.querySelectorAll('.live').forEach((n) => n.replaceWith(liveDot())); if (!me) es.close(); };
+  es.onmessage = () => liveRefresh();
+}
+// לא מרנדרים מחדש באמצע הקלדה או כשחלון פתוח; מנסים שוב כשהמשתמש מסיים
+function liveRefresh() {
+  if (!me) return;
+  const busy = document.querySelector('.modal') || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+  if (busy) { if (!livePending) { livePending = true; setTimeout(() => { livePending = false; liveRefresh(); }, 1500); } return; }
+  const y = scrollY;
+  const done = view === 'detail' && detailId ? employeeDetail(detailId, true) : ['employees', 'exemptions'].includes(view) ? go() : refreshMeta().then(() => {});
+  Promise.resolve(done).then(() => scrollTo(0, y)).catch(() => {});
+}
 
 // ---------- login ----------
 function showLogin() {
@@ -125,7 +161,8 @@ function shell(content) {
     $e('span', { class: 'sp' }),
     $e('button', { class: 'btn sec', text: '🔗 קישור למועמדים (apply/)', onclick: () => copy(location.origin + '/apply') }),
     $e('button', { class: 'btn', text: '＋ קליטת עובד חדש', onclick: newEmployee }),
-    $e('button', { class: 'btn ghost icon', title: 'יציאה', text: '⎋', onclick: async () => { await api('/logout', 'POST'); me = null; showLogin(); } }))),
+    liveDot(),
+    $e('button', { class: 'btn ghost icon', title: 'יציאה', text: '⎋', onclick: async () => { await api('/logout', 'POST'); me = null; es?.close(); showLogin(); } }))),
   $e('div', { class: 'shell' }, content));
 }
 async function refreshMeta() {
@@ -133,8 +170,8 @@ async function refreshMeta() {
   list = l; pendingEx = ex.filter((x) => x.status === 'pending').length; tplCount = t.length;
   return { ex, t };
 }
-function go() { ({ employees: employeesView, exemptions: exemptionsView, templates: templatesView, sim: simView, settings: settingsView })[view](); }
-async function boot() { cfg.capacity = me.capacity || 180; view = 'employees'; await refreshMeta(); go(); }
+function go() { if (view !== 'detail') detailId = null; ({ employees: employeesView, exemptions: exemptionsView, templates: templatesView, sim: simView, settings: settingsView, detail: () => employeeDetail(detailId) })[view](); }
+async function boot() { cfg.capacity = me.capacity || 180; view = 'employees'; await refreshMeta(); go(); connectLive(); }
 
 // ---------- employees ----------
 async function employeesView() {
@@ -143,23 +180,44 @@ async function employeesView() {
   const n = (s) => list.filter((e) => e.status === s).length;
   const stat = (icBg, ic, title, num, numColor, sub, bar, barOk) => $e('div', { class: 'card stat' }, $e('div', { class: 'ic', style: 'background:' + icBg, text: ic }),
     $e('h4', { text: title }), $e('div', { class: 'n', style: 'color:' + numColor, text: num }), $e('small', { text: sub }), bar != null ? $e('div', { class: 'bar' + (barOk ? ' ok' : ''), style: 'margin-top:12px' }, $e('i', { style: 'width:' + bar + '%' })) : null);
-  const q = $e('input', { type: 'text', placeholder: 'חיפוש לפי שם, ת.ז., טלפון או דוא"ל...' });
+  const q = $e('input', { type: 'text', value: flt.q, placeholder: 'חיפוש לפי שם, ת.ז., טלפון או דוא"ל...' });
   const fs = $e('select', {}, $e('option', { value: '', text: 'כל הסטטוסים' }), Object.entries(STATUS).map(([k, v]) => $e('option', { value: k, text: v[0] })));
   const depts = [...new Set(list.map((e) => e.department).filter(Boolean))];
   const fd = $e('select', {}, $e('option', { value: '', text: 'כל המחלקות' }), depts.map((d) => $e('option', { value: d, text: d })));
+  fs.value = flt.s; fd.value = depts.includes(flt.d) ? flt.d : '';
   const tb = $e('tbody');
+  const board = $e('div');
+  const filtered = () => { const s = q.value.trim().toLowerCase(); return list.filter((e) => (!s || [e.full_name, e.phone, e.email, e.id_number, e.job_title].join(' ').toLowerCase().includes(s)) && (!fs.value || e.status === fs.value) && (!fd.value || e.department === fd.value)); };
+  const progress = (e) => { const pct = e.total ? Math.round(100 * e.done / e.total) : 0; return [$e('div', { class: 'row', style: 'justify-content:space-between;gap:4px;font-size:.8rem' }, $e('span', { class: 'muted', text: e.done + '/' + e.total + ' טפסים' }), $e('b', { text: pct + '%' })), $e('div', { class: 'bar' + (pct === 100 ? ' ok' : ''), style: 'margin-top:4px' }, $e('i', { style: 'width:' + pct + '%' }))]; };
+  const kanban = () => $e('div', { class: 'kanban' }, Object.entries(STATUS).map(([k, [label, cls]]) => {
+    const items = filtered().filter((e) => e.status === k);
+    return $e('div', { class: 'kcol' }, $e('h4', {}, $e('span', { text: label }), $e('span', { class: 'chip ' + cls, text: items.length })),
+      items.map((e) => $e('div', { class: 'kc', onclick: () => employeeDetail(e.id) },
+        $e('div', { class: 'who' }, $e('div', { class: 'avatar', text: initials(e.full_name) }), $e('div', { style: 'min-width:0' }, $e('b', { text: e.full_name }), $e('small', { class: 'muted', text: [e.job_title, e.department].filter(Boolean).join(' · ') || e.phone || '' }))),
+        $e('div', { style: 'margin-top:10px' }, progress(e)),
+        $e('div', { class: 'row', style: 'margin-top:10px;justify-content:space-between' }, $e('small', { class: 'muted', text: e.opened ? ago(e.last_activity) : 'נשלח קישור' }),
+          $e('div', { class: 'quick', onclick: (ev) => ev.stopPropagation() },
+            $e('button', { class: 'btn ghost', title: 'העתקת קישור', text: '⧉', onclick: () => copy(empUrl(e.token)) }),
+            e.phone ? $e('a', { class: 'btn', style: 'background:#e2f6ee;color:#0f9d6a', title: 'שליחה בוואטסאפ', target: '_blank', href: waLink(e), text: '💬' }) : null,
+            e.status === 'review' ? $e('button', { class: 'btn', style: 'background:var(--ok)', title: 'אשר וקלוט', text: '✓', onclick: () => hire(e, employeesView) }) : null)))),
+      items.length ? null : $e('p', { class: 'muted', style: 'text-align:center;font-size:.85rem;margin:20px 0', text: '—' }));
+  }));
   const draw = () => {
-    const s = q.value.trim().toLowerCase(); tb.textContent = '';
-    list.filter((e) => (!s || [e.full_name, e.phone, e.email, e.id_number, e.job_title].join(' ').toLowerCase().includes(s)) && (!fs.value || e.status === fs.value) && (!fd.value || e.department === fd.value)).forEach((e) => {
-      const pct = e.total ? Math.round(100 * e.done / e.total) : 0, st = STATUS[e.status];
+    flt.q = q.value; flt.s = fs.value; flt.d = fd.value;
+    board.textContent = '';
+    if (boardMode === 'kanban') { board.append(kanban()); return; }
+    tb.textContent = '';
+    board.append($e('div', { class: 'tblwrap' }, $e('table', {}, $e('thead', {}, $e('tr', {}, ['פרטי העובד', 'מחלקה ותפקיד', 'סטטוס', 'התקדמות טפסים', 'עדכון אחרון', 'פעולות מהירות'].map((h) => $e('th', { text: h })))), tb)));
+    filtered().forEach((e) => {
+      const st = STATUS[e.status];
       tb.append($e('tr', { class: 'click', onclick: () => employeeDetail(e.id) },
         $e('td', {}, $e('div', { class: 'who' }, $e('div', { class: 'avatar', text: initials(e.full_name) }), $e('div', {}, $e('b', { text: e.full_name }), $e('small', { class: 'muted', text: [e.id_number && 'ת.ז.: ' + e.id_number, e.phone].filter(Boolean).join(' · ') })))),
         $e('td', {}, $e('b', { text: e.job_title || '—' }), $e('div', { class: 'muted', style: 'font-size:.85rem', text: e.department || '' })),
         $e('td', {}, $e('span', { class: 'chip ' + st[1], text: st[0] }), e.mail_status === 'sent' ? $e('div', { class: 'muted', style: 'font-size:.75rem;margin-top:3px', text: '✉ נשלח ליפעת' }) : e.mail_status === 'failed' ? $e('div', { style: 'font-size:.75rem;margin-top:3px;color:var(--err)', text: '✉ שליחה נכשלה' }) : null),
-        $e('td', { style: 'min-width:170px' }, $e('div', { class: 'row', style: 'justify-content:space-between;gap:4px;font-size:.8rem' }, $e('span', { class: 'muted', text: e.done + '/' + e.total + ' טפסים' }), $e('b', { text: pct + '%' })), $e('div', { class: 'bar' + (pct === 100 ? ' ok' : ''), style: 'margin-top:4px' }, $e('i', { style: 'width:' + pct + '%' }))),
+        $e('td', { style: 'min-width:170px' }, progress(e)),
         $e('td', { class: 'muted', style: 'white-space:nowrap', text: e.opened ? ago(e.last_activity) : 'נשלח קישור' }),
         $e('td', { onclick: (ev) => ev.stopPropagation() }, $e('div', { class: 'quick' },
-          $e('button', { class: 'btn sec', title: 'פתיחת תיק', text: '👁', onclick: () => employeeDetail(e.id) }),
+          e.status === 'review' ? $e('button', { class: 'btn', style: 'background:var(--ok)', title: 'אשר וקלוט', text: '✓', onclick: () => hire(e, employeesView) }) : $e('button', { class: 'btn sec', title: 'פתיחת תיק', text: '👁', onclick: () => employeeDetail(e.id) }),
           $e('button', { class: 'btn ghost', title: 'העתקת קישור', text: '⧉', onclick: () => copy(empUrl(e.token)) }),
           e.phone ? $e('a', { class: 'btn', style: 'background:#e2f6ee;color:#0f9d6a', title: 'שליחה בוואטסאפ', target: '_blank', href: waLink(e), text: '💬' }) : null,
           $e('button', { class: 'btn ghost', title: 'סימולטור נייד', text: '📱', onclick: () => { simTarget = e.token; simDevice = 'phone'; view = 'sim'; go(); } }),
@@ -168,21 +226,22 @@ async function employeesView() {
     if (!tb.children.length) tb.append($e('tr', {}, $e('td', { colspan: 6, class: 'muted', style: 'text-align:center;padding:40px', text: list.length ? 'לא נמצאו תוצאות' : 'עדיין לא נוספו עובדים. לחצו על "קליטת עובד חדש" או שלחו למועמדים את קישור ההרשמה.' })));
   };
   [q, fs, fd].forEach((x) => x.addEventListener('input', draw)); draw();
-  const done = n('done');
+  const sw = $e('div', { class: 'vsw' }, [['table', '☰ טבלה'], ['kanban', '▦ קנבן']].map(([k, label]) => $e('button', { class: boardMode === k ? 'on' : '', text: label,
+    onclick: () => { boardMode = k; try { localStorage.setItem('boardMode', k); } catch {} sw.querySelectorAll('button').forEach((b, i) => b.className = (i === 0) === (k === 'table') ? 'on' : ''); draw(); } })));
+  const appr = n('approved');
   shell($e('div', {},
     $e('div', { class: 'stats' },
-      stat('var(--priBg)', '👥', 'עובדים בטיפול', list.length, 'var(--ink)', 'מתוך ' + cap + ' עובדים', Math.min(100, 100 * list.length / cap)),
-      stat('var(--okbg)', '✓', 'תיקים שהושלמו', done, 'var(--ok)', 'נחתמו (' + (list.length ? Math.round(100 * done / list.length) : 0) + '%)', list.length ? 100 * done / list.length : 0, true),
-      stat('var(--warnbg)', '⏱', 'בתהליך מילוי', n('progress'), 'var(--warn)', 'עובדים פעילים · חלק מהטפסים כבר מולא'),
-      stat('#eef0f6', '!', 'טרם התחילו', n('new'), 'var(--ink)', 'ממתינים לפתיחת הקישור')),
+      stat('var(--priBg)', '👥', 'סה״כ מועמדים', list.length, 'var(--ink)', 'מתוך ' + cap + ' · ' + n('new') + ' טרם התחילו', Math.min(100, 100 * list.length / cap)),
+      stat('var(--warnbg)', '⏱', 'בתהליך מילוי', n('progress'), 'var(--warn)', 'פתחו את הקישור והחלו למלא'),
+      stat('#e9e8fd', '🔎', 'ממתינים לבדיקה', n('review'), 'var(--pri)', 'שלחו תיק מלא · ממתינים לאישור שלך'),
+      stat('var(--okbg)', '✓', 'נקלטו ואושרו', appr, 'var(--ok)', 'עובדים פעילים (' + (list.length ? Math.round(100 * appr / list.length) : 0) + '%)', list.length ? 100 * appr / list.length : 0, true)),
     $e('div', { class: 'card tblcard' },
       $e('div', { class: 'tblhead' }, $e('div', { class: 'row' },
-        $e('div', {}, $e('h2', { style: 'margin:0', text: 'רשימת עובדים בתהליך קליטה' }), $e('span', { class: 'muted', text: 'מעקב חי אחר מילוי טפסים, חתימות דיגיטליות ואישורים רפואיים/משטרה' })), $e('span', { class: 'sp' }),
+        $e('div', {}, $e('h2', { style: 'margin:0', text: 'רשימת עובדים בתהליך קליטה' }), $e('span', { class: 'muted', text: 'מעקב חי אחר מילוי טפסים, חתימות דיגיטליות ואישורים רפואיים/משטרה' })), $e('span', { class: 'sp' }), sw,
         $e('button', { class: 'btn', text: '＋ עובד חדש', onclick: newEmployee }),
         $e('button', { class: 'btn ghost icon', title: 'רענון', text: '↻', onclick: employeesView }),
         $e('a', { class: 'btn ghost', href: '/api/export.csv', text: '⬇ ייצוא לאקסל (שכר)' }))),
-      $e('div', { class: 'filters' }, q, fs, fd),
-      $e('div', { class: 'tblwrap' }, $e('table', {}, $e('thead', {}, $e('tr', {}, ['פרטי העובד', 'מחלקה ותפקיד', 'סטטוס', 'התקדמות טפסים', 'עדכון אחרון', 'פעולות מהירות'].map((h) => $e('th', { text: h })))), tb)))));
+      $e('div', { class: 'filters' }, q, fs, fd), board)));
 }
 
 function linkModal(e) {
@@ -218,8 +277,15 @@ async function newEmployee() {
       }) }), $e('button', { class: 'btn ghost', text: 'ביטול', onclick: () => m.remove() }))));
 }
 
-async function employeeDetail(id) {
-  const [d, tpls] = await Promise.all([api('/employees/' + id), api('/templates')]);
+async function hire(e, after) {
+  if (!confirm('לקלוט את ' + e.full_name + ' כעובד/ת פעיל/ה? כל הטפסים יסומנו כמאושרים.')) return;
+  try { await api('/employees/' + e.id + '/hire', 'POST', {}); toast(e.full_name + ' נקלט/ה כעובד/ת פעיל/ה ✓'); after(); } catch (err) { toast(err.message, true); }
+}
+async function employeeDetail(id, silent) {
+  let d, tpls;
+  try { [d, tpls] = await Promise.all([api('/employees/' + id), api('/templates')]); }
+  catch (err) { if (silent) { view = 'employees'; return go(); } throw err; }
+  view = 'detail'; detailId = id;
   const e = d.employee, st = STATUS[e.status];
   const cards = d.assignments.map((a) => {
     const t = a.template, ok = a.status === 'submitted';
@@ -235,11 +301,20 @@ async function employeeDetail(id) {
       dl.append($e('dt', { text: f.label }), $e('dd', {}, node));
     });
     return $e('div', { class: 'card', style: 'margin-bottom:14px' },
-      $e('div', { class: 'row' }, $e('h3', { style: 'margin:0', text: t.title }), $e('span', { class: 'chip' + (ok ? ' ok' : ''), text: ok ? 'הוגש ' + fmt(a.submitted_at) : 'ממתין' }), $e('span', { class: 'sp' }),
+      $e('div', { class: 'row' }, $e('h3', { style: 'margin:0', text: t.title }), $e('span', { class: 'chip' + (ok ? ' ok' : ''), text: ok ? 'הוגש ' + fmt(a.submitted_at) : 'ממתין' }), a.approved ? $e('span', { class: 'chip ok', text: '✓ אושר ע״י משאבי אנוש' }) : null, $e('span', { class: 'sp' }),
+        ok ? $e('button', { class: 'btn sm noprint ' + (a.approved ? 'ghost' : 'sec'), text: a.approved ? 'ביטול אישור' : '✓ אישור הטופס', onclick: guard(async () => { await api('/assignments/' + a.id + '/approve', 'POST', { approved: !a.approved }); employeeDetail(id); }) }) : null,
         ok ? $e('button', { class: 'btn ghost sm noprint', text: 'פתיחה מחדש לעריכה', onclick: guard(async () => { if (confirm('לפתוח את הטופס לעריכה מחודשת על ידי העובד?')) { await api('/assignments/' + a.id + '/reopen', 'POST'); employeeDetail(id); } }) }) : null,
         $e('button', { class: 'btn ghost sm noprint', text: 'הסרה', onclick: guard(async () => { if (confirm('להסיר את הטופס מהעובד? נתונים וקבצים יימחקו.')) { await api('/assignments/' + a.id, 'DELETE'); employeeDetail(id); } }) })),
       $e('div', { style: 'margin-top:12px' }, Object.keys(a.data).length || a.files.length ? dl : $e('p', { class: 'muted', text: 'טרם מולא.' })));
   });
+  const allOk = d.assignments.length && d.assignments.every((a) => a.status === 'submitted');
+  const hireBar = e.status === 'approved'
+    ? $e('div', { class: 'hirebar noprint', style: 'background:var(--okbg)' }, $e('b', { text: '✅ נקלט/ה כעובד/ת פעיל/ה' }), $e('span', { class: 'muted', text: fmt(e.approved_at) + (e.approved_by ? ' · אושר ע״י ' + e.approved_by : '') }), $e('span', { class: 'sp' }),
+      $e('button', { class: 'btn ghost sm', text: 'ביטול קליטה', onclick: guard(async () => { if (confirm('לבטל את הקליטה ולהחזיר לבדיקה?')) { await api('/employees/' + id + '/hire', 'POST', { undo: true }); employeeDetail(id); } }) }))
+    : e.status === 'review'
+      ? $e('div', { class: 'hirebar noprint', style: 'background:#eceafe' }, $e('div', {}, $e('b', { text: '🔎 התיק נשלח לבדיקה ' + fmt(e.submitted_at) }), $e('div', { class: 'muted', text: 'אושרו ' + e.approved + ' מתוך ' + e.total + ' טפסים. עברו על הטפסים ואשרו.' })), $e('span', { class: 'sp' }),
+        $e('button', { class: 'btn', style: 'background:var(--ok)', text: '✓ אשר וקלוט כעובד פעיל', onclick: () => hire(e, () => employeeDetail(id)) }))
+      : $e('div', { class: 'hirebar noprint', style: 'background:#f4f5fb' }, $e('span', { class: 'muted', text: allOk ? 'כל הטפסים הוגשו. ממתינים שהמועמד ילחץ "שליחה למשאבי אנוש".' : 'המועמד עדיין ממלא טפסים (' + e.done + '/' + e.total + '). כפתור הקליטה יופעל אחרי שהתיק יישלח.' }));
   const missing = tpls.filter((t) => !d.assignments.some((a) => a.template.id === t.id) && (t.gender_rule !== 'male' || e.gender === 'male'));
   shell($e('div', {},
     $e('div', { class: 'row noprint', style: 'margin:22px 0' }, $e('button', { class: 'btn ghost', text: '→ חזרה ללוח', onclick: () => { view = 'employees'; go(); } }), $e('span', { class: 'sp' }),
@@ -252,7 +327,7 @@ async function employeeDetail(id) {
       $e('div', {}, $e('h1', { style: 'margin:0', text: e.full_name }), $e('div', { class: 'muted', text: [e.job_title, e.department, e.id_number && 'ת.ז. ' + e.id_number, e.phone, e.email].filter(Boolean).join(' · ') || '—' })), $e('span', { class: 'sp' }),
       $e('span', { class: 'chip ' + st[1], text: st[0] }),
       e.mail_status ? $e('span', { class: 'chip ' + (e.mail_status === 'sent' ? 'ok' : e.mail_status === 'failed' ? 'err' : ''), title: e.mail_error || '', text: e.mail_status === 'sent' ? '✉ נשלח ליפעת ' + fmt(e.mail_at) : e.mail_status === 'failed' ? '✉ שליחה נכשלה' : '✉ המייל לא הוגדר' }) : null)),
-    cards,
+    hireBar, cards,
     missing.length ? $e('div', { class: 'card noprint' }, $e('h3', { text: 'הוספת טפסים לעובד' }), (() => {
       const cs = missing.map((t) => [t, $e('input', { type: 'checkbox' })]);
       return $e('div', {}, $e('div', { class: 'checks' }, cs.map(([t, c]) => $e('label', {}, c, t.title))),
