@@ -37,8 +37,23 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--pri);box
 .sigbox{border:1.5px dashed #a3abcc;border-radius:16px;background:#fff;position:relative;touch-action:none}
 .sigbox canvas{display:block;width:100%;height:170px;border-radius:16px}
 .sigbox .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#b6bcd6;pointer-events:none}
-.filebox{border:1.5px dashed #a3abcc;border-radius:16px;padding:14px;background:#fafbff}
-.filebox img{max-width:100%;max-height:200px;border-radius:10px;display:block;margin-top:10px}
+/* אזור העלאת קבצים */
+.filebox{border:0;padding:0;background:none}
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;min-height:132px;padding:18px;border:1.5px dashed #b4bbd8;border-radius:16px;background:#fafbff;cursor:pointer;transition:border-color .15s,background .15s,transform .15s;outline:none}
+.drop:hover,.drop:focus-visible{border-color:var(--pri);background:#f5f6ff}
+.drop.over{border-color:var(--pri);background:var(--priBg);transform:scale(1.01)}
+.drop.busy{cursor:progress;color:var(--pri)}
+.drop .dic{width:46px;height:46px;border-radius:14px;background:var(--priBg);color:var(--pri);display:flex;align-items:center;justify-content:center;margin-bottom:4px}
+.drop .dic .i{width:24px;height:24px}
+.drop.has{flex-direction:row;justify-content:flex-start;text-align:start;min-height:0;gap:14px;border-style:solid;border-color:#bfe7d4;background:#f6fcf9}
+.drop.has img,.drop.has .fic{width:64px;height:64px;border-radius:12px;object-fit:cover;flex:none;background:#fff;border:1px solid var(--line)}
+.drop.has .fic{display:flex;align-items:center;justify-content:center;color:var(--pri)}
+.drop.has .fic .i{width:28px;height:28px}
+.drop.has .meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.drop.has .meta b{color:var(--ok);display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.drop.has .meta small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dropErr{color:var(--err);display:inline-flex;align-items:center;gap:5px;margin-top:4px;font-weight:600}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .para{background:var(--priBg);border-radius:16px;padding:16px;white-space:pre-wrap;line-height:1.7}
 .consent{display:flex;gap:12px;align-items:flex-start;padding:14px;border:1.5px solid var(--line);border-radius:16px;background:#fff}
 .consent input{width:22px;height:22px;margin-top:3px;flex:none;accent-color:var(--pri)}
@@ -49,4 +64,19 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--pri);box
 .exempt{margin-top:8px;font-size:.92rem}
 .exempt button{background:none;border:0;color:var(--pri);text-decoration:underline;cursor:pointer;padding:4px 0;min-height:32px}
 .exempt .box{background:var(--warnbg);border-radius:12px;padding:10px 12px;margin-top:6px}
+/* אייקונים, טעינה ומעברים */
+.i{width:1.15em;height:1.15em;flex:none;vertical-align:-.2em}
+.i.lg{width:30px;height:30px}
+.spin{animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.btn.loading{pointer-events:none}
+.toast{display:flex;align-items:center;gap:8px;animation:toastIn .25s ease-out}
+@keyframes toastIn{from{opacity:0;transform:translateY(12px)}}
+.fade{animation:fadeIn .28s ease-out}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}}
+.loadbox{display:flex;flex-direction:column;align-items:center;gap:12px;padding:70px 14px;color:var(--mut)}
+.loadbox .i{width:34px;height:34px;color:var(--pri)}
+.skel{background:linear-gradient(90deg,#eceff7 25%,#f6f7fb 50%,#eceff7 75%);background-size:200% 100%;animation:skel 1.2s infinite;border-radius:12px}
+@keyframes skel{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition:none!important}}
 @media print{.noprint{display:none!important}body{background:#fff}.card{box-shadow:none;border:1px solid #ccc;break-inside:avoid}}

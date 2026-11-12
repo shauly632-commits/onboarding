@@ -38,6 +38,30 @@
 .saved{font-size:.85rem;color:var(--mut);min-height:1.3em;margin-top:8px}
 .center{text-align:center;padding:40px 14px}
 .big{font-size:3.2rem}
+.bigic{width:68px;height:68px;border-radius:22px;margin:0 auto 12px;display:flex;align-items:center;justify-content:center;background:var(--okbg);color:var(--ok)}
+.bigic .i{width:34px;height:34px}.bigic.pri{background:var(--priBg);color:var(--pri)}.bigic.err{background:var(--errbg);color:var(--err)}
+.hero .meta span{display:inline-flex;align-items:center;gap:6px}
+.prep{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.prep div{display:flex;align-items:center;gap:8px;background:#f6f7fc;border-radius:12px;padding:10px;font-size:.9rem;font-weight:600}
+.prep .i{color:var(--pri)}
+.steps{list-style:none;margin:0;padding:0}
+.steps li{display:flex;gap:12px;align-items:center;padding:9px 0;border-bottom:1px dashed var(--line)}
+.steps li:last-child{border:0}
+.steps .n{flex:none;width:30px;height:30px;border-radius:10px;background:var(--priBg);color:var(--pri);font-weight:800;display:flex;align-items:center;justify-content:center;font-size:.9rem}
+.steps b{display:block;line-height:1.3;font-size:.95rem}
+.stepper{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:14px}
+.stepper .row1{display:flex;justify-content:space-between;font-size:.9rem;margin-bottom:8px}
+.segs{display:flex;gap:5px}
+.seg{flex:1;height:8px;border:0;border-radius:99px;background:#e3e6f2;cursor:pointer;padding:0;transition:background .2s}
+.seg.done{background:var(--ok)}
+.seg.cur{background:linear-gradient(90deg,var(--pri),var(--pri2));box-shadow:0 0 0 3px rgba(79,70,229,.15)}
+.ftitle{font-size:1.25rem;margin:0 0 6px}
+.item .ico .i{width:22px;height:22px;color:var(--ok)}
+.btn.nb{flex:0 0 52px!important;padding:0}
+.saved{display:flex;align-items:center;gap:4px}
+.lockline{display:flex;align-items:center;justify-content:center;gap:6px;font-size:.85rem;margin:8px 0 0;color:var(--mut)}
+.warnp{background:var(--errbg)!important;margin-bottom:12px;display:flex;gap:8px;align-items:center}
+.checklist .ck .i{width:14px;height:14px}
 .checklist{list-style:none;margin:0 0 14px;padding:0}
 .checklist li{display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line);font-size:.93rem}
 .checklist li:last-child{border:0}
@@ -49,18 +73,19 @@
 </style>
 </head>
 <body>
-<div class="wrap" id="app"><div class="center muted">טוען...</div></div>
+<div class="wrap" id="app"><div class="loadbox"><svg class="i spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>טוען את טפסי הקליטה...</div></div>
 <script src="/forms.js"></script>
 <script>
-const { $e, render } = Forms;
+const { $e, icon, busy, render } = Forms;
 const token = location.pathname.split('/')[2];
 const API = '/api/e/' + token;
-let state = null, installEvt = null, ctl = null;
+let state = null, installEvt = null, ctl = null, current = '';
 const app = document.getElementById('app');
 
 document.head.append($e('link', { rel: 'manifest', href: API + '/manifest.json' }));
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
-window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; if (!ctl && state) home(); });
+// כפתור ההתקנה מופיע רק במסך הסקירה; לא מוציאים את המשתמש ממסך אחר
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; if (current === 'home') home(); });
 
 async function api(path, opts = {}) {
   const r = await fetch(API + path, { ...opts, headers: { 'Content-Type': 'application/json' }, body: opts.body ? JSON.stringify(opts.body) : undefined });
@@ -68,110 +93,162 @@ async function api(path, opts = {}) {
   if (!r.ok) { const e = new Error(j.error || 'שגיאה'); e.status = r.status; e.errors = j.errors; throw e; }
   return j;
 }
-function toast(msg, err) { const t = $e('div', { class: 'toast' + (err ? ' err' : ''), text: msg }); document.body.append(t); setTimeout(() => t.remove(), 3200); }
+function toast(msg, err) { const t = $e('div', { class: 'toast' + (err ? ' err' : ''), icon: err ? 'alert' : 'checkCircle', text: msg }); document.body.append(t); setTimeout(() => t.remove(), 3200); }
 const fmtDate = (s) => s ? new Date(s).toLocaleDateString('he-IL') : '';
-const initials = (n) => (n || 'א').trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('');
+const firstName = () => state.employee.full_name.split(' ')[0];
+const isDone = (a) => a.status === 'submitted';
+const minutes = (t) => Math.max(1, Math.round(t.fields.filter((f) => !['heading', 'paragraph', 'document'].includes(f.type)).length / 4));
+// מסך חדש: מנקה, מוסיף אנימציית כניסה וגולל למעלה
+function screen(name, ...nodes) { current = name; app.textContent = ''; const w = $e('div', { class: 'fade' }, nodes); app.append(w); scrollTo(0, 0); return w; }
 
 async function load() {
   try { state = await api(''); } catch (e) {
-    app.textContent = '';
-    app.append($e('div', { class: 'center card' }, $e('div', { class: 'big', text: '🔗' }), $e('h2', { text: 'הקישור אינו תקף' }), $e('p', { class: 'muted', text: 'פנו אל משאבי אנוש לקבלת קישור חדש.' })));
+    screen('error', $e('div', { class: 'center card' }, $e('div', { class: 'bigic err' }, icon('link')), $e('h2', { text: 'הקישור אינו תקף' }), $e('p', { class: 'muted', text: 'פנו אל משאבי אנוש לקבלת קישור חדש.' })));
     return false;
   }
   return true;
 }
 const brand = () => $e('div', { class: 'brand' }, $e('div', { class: 'logo', text: 'אודי' }), $e('div', {}, $e('b', { text: state.company || 'קליטת עובדים' }), $e('span', { text: 'קליטת עובד/ת חדש/ה' })));
+const started = () => { try { return localStorage.getItem('started_' + token) === '1'; } catch { return false; } };
+const markStarted = () => { try { localStorage.setItem('started_' + token, '1'); } catch {} };
 
+// ---------- מסך פתיחה: הסבר על התהליך והשלבים ----------
+function welcome() {
+  ctl = null;
+  const as = state.assignments, total = as.reduce((n, a) => n + minutes(a.template), 0);
+  const startBtn = $e('button', { class: 'btn', style: 'width:100%', onclick: () => { markStarted(); openForm(as[0].template.id); } }, 'בואו נתחיל', icon('next'));
+  screen('welcome', brand(),
+    $e('div', { class: 'hero' }, $e('h1', { text: 'שלום ' + firstName() + ', ברוכים הבאים!' }),
+      $e('p', { text: 'לפני תחילת העבודה צריך להשלים כמה טפסים ומסמכים. התהליך מתבצע כולו מהטלפון, ואפשר לעצור ולהמשיך בכל זמן: כל מה שממלאים נשמר אוטומטית.' }),
+      $e('div', { class: 'meta' }, $e('span', { icon: 'file', text: as.length + ' שלבים' }), $e('span', { icon: 'clock', text: 'כ-' + total + ' דקות' }), $e('span', { icon: 'lock', text: 'מאובטח' }))),
+    $e('div', { class: 'card' }, $e('h3', { style: 'margin:0 0 4px', text: 'מה צריך להכין' }),
+      $e('div', { class: 'prep' }, [['idcard', 'תעודת זהות + ספח'], ['file', 'פרטי חשבון בנק'], ['camera', 'טלפון לצילום מסמכים'], ['pen', 'חתימה באצבע על המסך']].map(([ic, t]) => $e('div', { icon: ic, text: t })))),
+    $e('div', { class: 'card', style: 'margin-top:14px' }, $e('h3', { style: 'margin:0 0 8px', text: 'שלבי התהליך' }),
+      $e('ol', { class: 'steps' }, as.map((a, i) => $e('li', {}, $e('span', { class: 'n', text: i + 1 }), $e('div', {}, $e('b', { text: a.template.title }), $e('small', { class: 'muted', text: 'כ-' + minutes(a.template) + ' דק׳' })))),
+        $e('li', {}, $e('span', { class: 'n' }, icon('send')), $e('div', {}, $e('b', { text: 'בדיקה ושליחה למשאבי אנוש' }), $e('small', { class: 'muted', text: 'אחרי שכל השלבים הושלמו' }))))),
+    $e('div', { class: 'savebar' }, $e('div', { class: 'in' }, startBtn)));
+}
+
+// ---------- סקירה: כל השלבים, רשימת ביצוע ושליחה סופית ----------
 function home() {
   ctl = null; if (location.hash) history.replaceState(null, '', location.pathname);
-  const as = state.assignments, done = as.filter((a) => a.status === 'submitted').length;
+  const as = state.assignments, done = as.filter(isDone).length;
   const meta = [state.employee.job_title, state.employee.department].filter(Boolean);
-  app.textContent = '';
-  app.append(brand(), $e('div', { class: 'hero' },
-    $e('h1', { text: 'שלום ' + state.employee.full_name.split(' ')[0] + ' 👋' }),
-    $e('p', { text: state.approved ? 'התיק אושר ונקלטת כעובד/ת. ברוכים הבאים לצוות! 🎉' : state.submitted_at ? 'התיק נשלח למשאבי אנוש לבדיקה סופית. תודה רבה!' : done === as.length && as.length ? 'כל הטפסים מולאו! נשאר רק לשלוח את התיק למשאבי אנוש (למטה).' : 'ברוכים הבאים! נשארו ' + (as.length - done) + ' טפסים למילוי. אפשר לעצור ולהמשיך בכל זמן: ההתקדמות נשמרת.' }),
+  const next = as.find((a) => !isDone(a));
+  const w = screen('home', brand(), $e('div', { class: 'hero' },
+    $e('h1', { text: 'שלום ' + firstName() }),
+    $e('p', { text: state.approved ? 'התיק אושר ונקלטת כעובד/ת. ברוכים הבאים לצוות!' : state.submitted_at ? 'התיק נשלח למשאבי אנוש לבדיקה סופית. תודה רבה!' : done === as.length && as.length ? 'כל השלבים הושלמו! נשאר רק לשלוח את התיק למשאבי אנוש.' : 'הושלמו ' + done + ' מתוך ' + as.length + ' שלבים. אפשר לעצור ולהמשיך בכל זמן: ההתקדמות נשמרת.' }),
     meta.length ? $e('div', { class: 'meta' }, meta.map((m) => $e('span', { text: m }))) : null,
     $e('div', { class: 'bar' }, $e('i', { style: 'width:' + (as.length ? (100 * done / as.length) : 0) + '%' }))));
-  if (!as.length) app.append($e('div', { class: 'card center muted', text: 'עדיין לא הוקצו טפסים.' }));
+  if (!as.length) w.append($e('div', { class: 'card center muted', text: 'עדיין לא הוקצו טפסים.' }));
+  if (next && !state.submitted_at) w.append($e('button', { class: 'btn', style: 'width:100%;margin-bottom:14px', onclick: () => openForm(next.template.id) }, done ? 'המשך לשלב הבא' : 'התחלת המילוי', icon('next')));
   as.forEach((a, i) => {
-    const ok = a.status === 'submitted';
+    const ok = isDone(a);
     const pend = Object.values(a.exemptions || {}).some((x) => x.status === 'rejected');
-    app.append($e('div', { class: 'card item' + (ok ? ' done' : ''), role: 'button', tabindex: 0, onclick: () => openForm(a.template.id) },
-      $e('div', { class: 'ico', text: ok ? '✅' : (i + 1) }),
+    w.append($e('div', { class: 'card item' + (ok ? ' done' : ''), role: 'button', tabindex: 0, onclick: () => openForm(a.template.id), onkeydown: (e) => e.key === 'Enter' && openForm(a.template.id) },
+      $e('div', { class: 'ico' }, ok ? icon('check') : String(i + 1)),
       $e('div', { class: 't' }, $e('b', { text: a.template.title }), $e('span', { text: a.template.description || '' })),
-      $e('span', { class: 'chip' + (ok ? ' ok' : pend ? ' err' : ''), text: ok ? 'הוגש' : pend ? 'נדרש תיקון' : (Object.keys(a.data).length ? 'טיוטה' : 'ממתין') })));
+      $e('span', { class: 'chip' + (ok ? ' ok' : pend ? ' err' : ''), text: ok ? 'הושלם' : pend ? 'נדרש תיקון' : (Object.keys(a.data).length || a.files.length ? 'בתהליך' : 'ממתין') })));
   });
-  if (as.length) app.append(finalCard(as));
-  if (installEvt) app.append($e('button', { class: 'btn sec', style: 'width:100%;margin-top:12px', text: '📲 התקנה כאפליקציה בטלפון', onclick: () => { installEvt.prompt(); installEvt = null; home(); } }));
+  if (as.length) w.append(finalCard(as));
+  if (installEvt) w.append($e('button', { class: 'btn sec', style: 'width:100%;margin-top:12px', icon: 'install', text: 'התקנה כאפליקציה בטלפון', onclick: () => { installEvt.prompt(); installEvt = null; home(); } }));
   else if (/iPhone|iPad/.test(navigator.userAgent) && !navigator.standalone)
-    app.append($e('p', { class: 'muted', style: 'text-align:center;margin-top:14px;font-size:.9rem', text: 'להתקנה כאפליקציה: לחצו על כפתור השיתוף בדפדפן ובחרו "הוסף למסך הבית".' }));
+    w.append($e('p', { class: 'muted', style: 'text-align:center;margin-top:14px;font-size:.9rem', text: 'להתקנה כאפליקציה: לחצו על כפתור השיתוף בדפדפן ובחרו "הוסף למסך הבית".' }));
 }
 
-// רשימת ביצוע + כפתור שליחה סופית שנעול עד שכל הטפסים הושלמו
+// רשימת ביצוע + כפתור שליחה סופית שנעול עד שכל השלבים הושלמו
 function finalCard(as) {
-  if (state.submitted_at) return $e('div', { class: 'card center', style: 'margin-top:6px' }, $e('div', { class: 'big', text: state.approved ? '🎉' : '📨' }),
+  if (state.submitted_at) return $e('div', { class: 'card center', style: 'margin-top:6px' }, $e('div', { class: 'bigic' + (state.approved ? '' : ' pri') }, icon(state.approved ? 'sparkles' : 'send')),
     $e('h2', { text: state.approved ? 'נקלטת בהצלחה!' : 'הפרטים נשלחו' }), $e('p', { class: 'muted', text: state.approved ? 'משאבי אנוש אישרו את התיק שלך.' : 'הפרטים שלך נשלחו למשאבי אנוש לבדיקה סופית. נעדכן אותך בהמשך.' }));
-  const missing = as.filter((a) => a.status !== 'submitted');
+  const missing = as.filter((a) => !isDone(a));
   const rejected = as.some((a) => Object.values(a.exemptions || {}).some((x) => x.status === 'rejected'));
   const ready = !missing.length && !rejected;
-  const tip = ready ? '' : 'יש להשלים ולהגיש את כל הטפסים לפני השליחה (' + missing.length + ' חסרים)';
-  const btn = $e('button', { class: 'btn', text: '📨 שליחה למשאבי אנוש', disabled: !ready, title: tip, onclick: async () => {
-    btn.disabled = true; btn.textContent = 'שולח...';
-    try { await api('/submit', { method: 'POST' }); await load(); thanks(); }
-    catch (e) { toast(e.message, true); btn.disabled = false; btn.textContent = '📨 שליחה למשאבי אנוש'; }
-  } });
+  const tip = ready ? '' : rejected ? 'בקשת פטור נדחתה. יש להעלות את המסמך החסר' : 'יש להשלים את כל השלבים לפני השליחה (' + missing.length + ' חסרים)';
+  const btn = $e('button', { class: 'btn', icon: 'send', text: 'שליחה למשאבי אנוש', disabled: !ready, title: tip, onclick: () => busy(btn, async () => {
+    try { await api('/submit', { method: 'POST' }); await load(); thanks(); } catch (e) { toast(e.message, true); }
+  }) });
   return $e('div', { class: 'card', style: 'margin-top:6px' }, $e('h3', { style: 'margin:0 0 10px', text: 'רשימת ביצוע' }),
-    $e('ul', { class: 'checklist' }, as.map((a) => { const ok = a.status === 'submitted'; return $e('li', {}, $e('span', { class: 'ck ' + (ok ? 'y' : 'n'), text: ok ? '✓' : '' }), $e('span', { style: ok ? '' : 'color:var(--mut)', text: a.template.title })); })),
+    $e('ul', { class: 'checklist' }, as.map((a) => { const ok = isDone(a); return $e('li', {}, $e('span', { class: 'ck ' + (ok ? 'y' : 'n') }, ok ? icon('check') : null), $e('span', { style: ok ? '' : 'color:var(--mut)', text: a.template.title })); })),
     $e('span', { class: 'tipwrap', title: tip }, btn),
-    ready ? null : $e('p', { class: 'muted', style: 'font-size:.85rem;margin:8px 0 0;text-align:center', text: '🔒 ' + tip }));
+    ready ? null : $e('p', { class: 'lockline', icon: 'lock', text: tip }));
 }
 function thanks() {
-  app.textContent = '';
-  app.append(brand(), $e('div', { class: 'card center' }, $e('div', { class: 'big', text: '📨' }), $e('h2', { text: 'תודה, ' + state.employee.full_name.split(' ')[0] + '!' }),
+  screen('thanks', brand(), $e('div', { class: 'card center' }, $e('div', { class: 'bigic ok' }, icon('checkCircle')), $e('h2', { text: 'תודה, ' + firstName() + '!' }),
     $e('p', { text: 'הפרטים שלך נשלחו למשאבי אנוש לבדיקה סופית.' }), $e('p', { class: 'muted', text: 'אפשר לסגור את החלון. אם יידרש תיקון, נחזור אליך.' }),
-    $e('button', { class: 'btn ghost', text: 'חזרה לטפסים', onclick: home })));
-  scrollTo(0, 0);
+    $e('button', { class: 'btn ghost', icon: 'back', text: 'חזרה לסקירה', onclick: home })));
 }
 
+// ---------- אשף: שלב אחד בכל פעם ----------
+function stepper(idx) {
+  const as = state.assignments;
+  return $e('div', { class: 'stepper' },
+    $e('div', { class: 'row1' }, $e('b', { text: 'שלב ' + (idx + 1) + ' מתוך ' + as.length }), $e('span', { class: 'muted', text: as.filter(isDone).length + ' הושלמו' })),
+    $e('div', { class: 'segs' }, as.map((a, i) => $e('button', { type: 'button', class: 'seg' + (isDone(a) ? ' done' : '') + (i === idx ? ' cur' : ''), title: (i + 1) + '. ' + a.template.title, 'aria-label': 'מעבר לשלב ' + (i + 1),
+      onclick: async () => { if (i === idx) return; if (ctl) await ctl.flush(); openForm(a.template.id); } }))));
+}
+async function goTo(tplId) { if (ctl) await ctl.flush(); ctl = null; if (tplId) openForm(tplId); else { await load(); home(); } }
+
 function openForm(tplId) {
-  const a = state.assignments.find((x) => x.template.id === tplId);
-  const t = a.template; location.hash = 'f' + tplId;
-  app.textContent = '';
-  const back = $e('button', { class: 'btn ghost sm', text: '→ חזרה', onclick: async () => { if (ctl) await ctl.flush(); await load(); home(); } });
-  app.append($e('div', { class: 'top' }, back, $e('h2', { text: t.title })));
-  if (a.status === 'submitted') {
-    app.append($e('div', { class: 'card center' }, $e('div', { class: 'big', text: '✅' }), $e('h2', { text: 'הטופס הוגש' }), $e('p', { class: 'muted', text: 'הוגש בתאריך ' + fmtDate(a.submitted_at) + '. לא ניתן לערוך לאחר ההגשה. לשינוי פנו אל משאבי אנוש.' })));
+  const as = state.assignments, idx = as.findIndex((x) => x.template.id === tplId);
+  const a = as[idx], t = a.template, prev = as[idx - 1], next = as[idx + 1];
+  history.replaceState(null, '', location.pathname + '#f' + tplId); ctl = null;
+  const top = $e('div', { class: 'top' }, $e('button', { class: 'btn ghost sm', icon: 'back', text: 'כל השלבים', onclick: () => goTo(null) }));
+  const head = $e('div', {}, stepper(idx), $e('h2', { class: 'ftitle', text: t.title }), t.description ? $e('p', { class: 'muted', style: 'margin:-4px 0 12px', text: t.description }) : null);
+  const nav = (main) => $e('div', { class: 'savebar' }, $e('div', { class: 'in' },
+    prev ? $e('button', { class: 'btn ghost nb', title: 'לשלב הקודם', 'aria-label': 'לשלב הקודם', onclick: () => goTo(prev.template.id) }, icon('back')) : null, main));
+  if (isDone(a)) {
+    screen('form', top, head, $e('div', { class: 'card center' }, $e('div', { class: 'bigic ok' }, icon('checkCircle')), $e('h2', { text: 'השלב הושלם' }),
+      $e('p', { class: 'muted', text: 'נשלח בתאריך ' + fmtDate(a.submitted_at) + '. לאחר השליחה לא ניתן לערוך. לשינוי פנו אל משאבי אנוש.' })),
+      nav($e('button', { class: 'btn', onclick: () => goTo(next ? next.template.id : null) }, next ? 'לשלב הבא' : 'לסקירה ושליחה', icon('next'))));
     return;
   }
   const card = $e('div', { class: 'card' });
   if (Object.values(a.exemptions || {}).some((x) => x.status === 'rejected'))
-    card.append($e('div', { class: 'para', style: 'background:var(--errbg);margin-bottom:12px', text: '⚠ בקשת פטור ממסמך נדחתה. יש להעלות את המסמך החסר.' }));
-  if (t.attachment) card.append($e('p', {}, '📎 ', $e('a', { href: API + '/templates/' + t.id + '/attachment', target: '_blank', text: 'להורדת הטופס: ' + t.attachment.name })));
-  const body = $e('div'); card.append(body); app.append(card);
+    card.append($e('div', { class: 'para warnp', icon: 'alert', text: 'בקשת פטור ממסמך נדחתה. יש להעלות את המסמך החסר.' }));
+  if (t.attachment) card.append($e('p', {}, icon('clip'), ' ', $e('a', { href: API + '/templates/' + t.id + '/attachment', target: '_blank', text: 'להורדת הטופס: ' + t.attachment.name })));
+  const body = $e('div'); card.append(body);
   const saved = $e('div', { class: 'saved' });
   ctl = render(body, t, {
     data: a.data, files: a.files, exemptions: a.exemptions, prefill: state.employee,
-    onChange: async (vals) => { saved.textContent = 'שומר...'; try { await api('/forms/' + tplId, { method: 'PUT', body: { data: vals } }); a.data = { ...vals }; saved.textContent = '✓ נשמר אוטומטית'; } catch (e) { saved.textContent = e.status === 409 ? 'הטופס כבר הוגש' : '⚠ השמירה נכשלה, בדקו חיבור'; } },
-    upload: (field, payload) => api('/forms/' + tplId + '/files', { method: 'POST', body: { field, ...payload } }),
-    exempt: (field, p) => api('/forms/' + tplId + '/exempt', { method: 'POST', body: { field, ...p } }),
+    onChange: async (vals) => { saved.replaceChildren(icon('loader'), ' שומר...'); try { await api('/forms/' + tplId, { method: 'PUT', body: { data: vals } }); a.data = { ...vals }; saved.replaceChildren(icon('check'), ' נשמר אוטומטית'); } catch (e) { saved.textContent = e.status === 409 ? 'הטופס כבר נשלח' : 'השמירה נכשלה, בדקו חיבור'; } },
+    // מעדכנים גם את המצב המקומי, כדי שמעבר בין שלבים יציג את הקבצים ובקשות הפטור העדכניים
+    upload: async (field, payload) => {
+      const r = await api('/forms/' + tplId + '/files', { method: 'POST', body: { field, ...payload } });
+      a.files = a.files.filter((x) => x.field_key !== field).concat({ ...r, filename: payload.filename }); delete a.exemptions[field];
+      return r;
+    },
+    exempt: async (field, p) => {
+      const r = await api('/forms/' + tplId + '/exempt', { method: 'POST', body: { field, ...p } });
+      if (r.exemption) a.exemptions[field] = r.exemption; else delete a.exemptions[field];
+      return r;
+    },
     fileUrl: (id) => API + '/files/' + id,
     docUrl: (f) => API + '/docs/' + f,
   });
-  const submit = $e('button', { class: 'btn', text: 'שליחת הטופס ✓', onclick: async () => {
+  const submit = $e('button', { class: 'btn', onclick: async () => {
     const errs = ctl.validate();
     if (Object.keys(errs).length) { ctl.showErrors(errs); return toast('יש למלא את שדות החובה המסומנים', true); }
-    submit.disabled = true;
-    try { await api('/forms/' + tplId, { method: 'PUT', body: { data: ctl.collect(), submit: true } }); toast('הטופס נשלח בהצלחה ✓'); await load(); home(); }
-    catch (e) { submit.disabled = false; if (e.errors) ctl.showErrors(e.errors); toast(e.message, true); }
-  } });
-  app.append(saved, $e('div', { class: 'savebar' }, $e('div', { class: 'in' }, submit)));
-  window.scrollTo(0, 0);
+    await busy(submit, async () => {
+      try {
+        await api('/forms/' + tplId, { method: 'PUT', body: { data: ctl.collect(), submit: true } });
+        toast('השלב נשמר ונשלח');
+        await load(); ctl = null;
+        // ממשיכים אוטומטית לשלב הבא שעוד לא הושלם, ואם אין כזה לסקירה ושליחה
+        const nx = state.assignments.slice(idx + 1).find((x) => !isDone(x)) || state.assignments.find((x) => !isDone(x));
+        nx ? openForm(nx.template.id) : home();
+      } catch (e) { if (e.errors) ctl.showErrors(e.errors); toast(e.message, true); }
+    });
+  } }, next ? 'שמירה והמשך' : 'שמירה וסיום', icon(next ? 'next' : 'check'));
+  screen('form', top, head, card, saved, nav(submit));
 }
 
 (async () => {
   if (!(await load())) return;
   const m = /^#f(\d+)$/.exec(location.hash);
-  if (m && state.assignments.some((a) => a.template.id === +m[1])) openForm(+m[1]); else home();
+  const as = state.assignments;
+  if (m && as.some((a) => a.template.id === +m[1])) openForm(+m[1]);
+  else if (as.length && !state.submitted_at && !as.some((a) => isDone(a) || Object.keys(a.data).length || a.files.length) && !started()) welcome();
+  else home();
 })();
 </script>
 </body>

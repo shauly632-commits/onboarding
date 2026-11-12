@@ -1,16 +1,77 @@
 /* רכיבי טפסים משותפים: הצגת שדות, חתימה, העלאת קבצים, ולידציה */
 (function () {
+  // ---------- אייקונים (בסגנון Lucide, SVG מוטמע ללא תלות חיצונית) ----------
+  const P = {
+    users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/>',
+    file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/>',
+    phone: '<rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+    plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+    userPlus: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/>',
+    userCheck: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m16 11 2 2 4-4"/>',
+    logout: '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
+    eye: '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+    copy: '<rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+    chat: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+    trash: '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+    printer: '<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/>',
+    mail: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+    clip: '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+    send: '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+    search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
+    checkCircle: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/>',
+    x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+    upload: '<path d="M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/>',
+    refresh: '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>',
+    undo: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+    list: '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
+    kanban: '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 7v7"/><path d="M12 7v4"/><path d="M16 7v9"/>',
+    back: '<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>',
+    next: '<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>',
+    lock: '<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    up: '<path d="m18 15-6-6-6 6"/>',
+    down: '<path d="m6 9 6 6 6-6"/>',
+    monitor: '<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>',
+    pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+    sparkles: '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>',
+    alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+    idcard: '<rect width="20" height="16" x="2" y="4" rx="2"/><circle cx="8" cy="11" r="2"/><path d="M5 17c.5-1.5 1.7-2 3-2s2.5.5 3 2"/><path d="M14 10h5"/><path d="M14 14h3"/>',
+    folder: '<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>',
+    camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/>',
+    user: '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+    info: '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+    install: '<rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 7v7"/><path d="m9 11 3 3 3-3"/>',
+    loader: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
+  };
+  const icon = (name, cls = '') => {
+    const t = document.createElement('template');
+    t.innerHTML = `<svg class="i ${name === 'loader' ? 'spin ' : ''}${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ''}</svg>`;
+    return t.content.firstChild;
+  };
   const $e = (tag, props = {}, ...kids) => {
     const n = document.createElement(tag);
     for (const [k, v] of Object.entries(props)) {
       if (k === 'class') n.className = v;
       else if (k === 'text') n.textContent = v;
+      else if (k === 'icon') continue;
       else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
       else if (v !== false && v != null) n.setAttribute(k, v === true ? '' : v);
     }
     kids.flat().forEach((c) => c != null && n.append(c));
+    if (props.icon) n.prepend(icon(props.icon));
     return n;
   };
+  // כפתור במצב טעינה: מציג ספינר ונועל את הכפתור עד לסיום הפעולה
+  async function busy(btn, fn) {
+    const keep = [...btn.childNodes];
+    btn.disabled = true; btn.classList.add('loading'); btn.prepend(icon('loader'));
+    try { return await fn(); } finally { btn.disabled = false; btn.classList.remove('loading'); btn.replaceChildren(...keep); }
+  }
 
   function validIsraeliId(v) {
     const s = String(v || '').replace(/\D/g, '');
@@ -63,18 +124,33 @@
     } catch { return { mime: file.type, data: await toB64(file), preview: null }; }
   }
   function fileField(f, existing, opts, onUploaded, exemption, onExempt) {
-    const status = $e('div', { class: 'muted', style: 'margin-top:8px' });
-    const holder = $e('div');
     const exBox = $e('div', { class: 'exempt' });
-    const show = (m) => { status.textContent = ''; status.append('✓ הועלה: ' + (m.filename || 'קובץ') + ' ');
-      if (opts.fileUrl) status.append($e('a', { href: opts.fileUrl(m.id), target: '_blank', text: 'צפייה' })); };
-    if (existing && existing.id) show(existing);
+    const input = $e('input', { type: 'file', accept: 'image/*,application/pdf', class: 'sr' });
+    const drop = $e('div', { class: 'drop', role: 'button', tabindex: 0, 'aria-label': (f.label || 'קובץ') + ': העלאת קובץ' });
+    let preview = null;
+    // מצב ריק: אזור גרירה. מצב מלא: כרטיס קובץ עם תצוגה מקדימה והחלפה
+    const draw = (state, msg) => {
+      drop.textContent = ''; drop.className = 'drop' + (state ? ' ' + state : '');
+      if (state === 'busy') { drop.append(icon('loader', 'lg'), $e('b', { text: 'מעלה את הקובץ...' })); return; }
+      if (existing && existing.id) {
+        const thumb = preview || (opts.fileUrl && /^image\//.test(existing.mime || 'image/') ? opts.fileUrl(existing.id) : null);
+        drop.classList.add('has');
+        drop.append(thumb && existing.mime !== 'application/pdf' ? $e('img', { src: thumb, alt: '' }) : $e('span', { class: 'fic' }, icon('file')),
+          $e('span', { class: 'meta' }, $e('b', { icon: 'checkCircle', text: 'הקובץ הועלה' }), $e('small', { class: 'muted', text: existing.filename || 'קובץ' }),
+            opts.fileUrl ? $e('a', { href: opts.fileUrl(existing.id), target: '_blank', text: 'צפייה', onclick: (e) => e.stopPropagation() }) : ''),
+          $e('span', { class: 'btn ghost sm', icon: 'refresh', text: 'החלפה' }));
+        return;
+      }
+      drop.append($e('span', { class: 'dic' }, icon('upload')), $e('b', { text: 'גררו קובץ לכאן או לחצו לבחירה' }),
+        $e('small', { class: 'muted', text: 'בטלפון אפשר לצלם ישירות · תמונה או PDF עד 10MB' }));
+      if (msg) drop.append($e('small', { class: 'dropErr', icon: 'alert', text: msg }));
+    };
     const drawEx = () => {
       exBox.textContent = '';
       if (!f.allow_exempt || !opts.exempt) return;
       if (exemption) {
         const st = { approved: 'אושר', rejected: 'נדחה', pending: 'ממתין לאישור משאבי אנוש' }[exemption.status] || '';
-        exBox.append($e('div', { class: 'box' }, '📝 בקשת פטור ממסמך זה (' + st + '): ' + exemption.reason + ' ',
+        exBox.append($e('div', { class: 'box' }, icon('info'), ' בקשת פטור ממסמך זה (' + st + '): ' + exemption.reason + ' ',
           $e('button', { type: 'button', text: 'ביטול הבקשה', onclick: async () => { try { await opts.exempt(f.key, { cancel: true }); exemption = null; onExempt(null); drawEx(); } catch (e) { alert(e.message); } } })));
       } else if (!(existing && existing.id)) {
         exBox.append($e('button', { type: 'button', text: 'אין לי מסמך זה', onclick: async () => {
@@ -84,20 +160,26 @@
         } }));
       }
     };
-    drawEx();
-    const input = $e('input', { type: 'file', accept: 'image/*,application/pdf', style: 'width:100%' });
-    input.addEventListener('change', async () => {
-      const file = input.files[0]; if (!file) return;
-      status.textContent = 'מעלה...'; holder.textContent = '';
+    const handle = async (file) => {
+      if (!file) return;
+      if (!/^image\/|^application\/pdf$/.test(file.type)) return draw('', 'יש להעלות תמונה או PDF');
+      if (file.size > 25 * 1024 * 1024) return draw('', 'הקובץ גדול מדי');
+      draw('busy');
       try {
         const p = await prepareFile(file);
         const meta = await opts.upload(f.key, { filename: file.name, mime: p.mime, data: p.data });
-        existing = meta; exemption = null; onExempt(null); drawEx();
-        show({ ...meta, filename: file.name }); onUploaded();
-        if (p.preview) holder.append($e('img', { src: p.preview, alt: '' }));
-      } catch (e) { status.textContent = ''; status.append($e('span', { style: 'color:var(--err)', text: e.message || 'ההעלאה נכשלה' })); }
-    });
-    return $e('div', { class: 'filebox' }, $e('div', { class: 'muted', text: 'צילום או בחירת קובץ (תמונה / PDF)' }), input, status, holder, exBox);
+        existing = { ...meta, filename: file.name, mime: p.mime }; preview = p.preview; exemption = null;
+        onExempt(null); drawEx(); onUploaded(); draw('');
+      } catch (e) { draw('', e.message || 'ההעלאה נכשלה'); }
+    };
+    drop.addEventListener('click', (e) => { if (e.target.closest('a') || drop.classList.contains('busy')) return; e.preventDefault(); input.click(); });
+    drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); input.click(); } });
+    ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+    ['dragleave', 'dragend'].forEach((ev) => drop.addEventListener(ev, () => drop.classList.remove('over')));
+    drop.addEventListener('drop', (e) => { e.preventDefault(); drop.classList.remove('over'); handle(e.dataTransfer.files[0]); });
+    input.addEventListener('change', () => { handle(input.files[0]); input.value = ''; });
+    draw(''); drawEx();
+    return $e('div', { class: 'filebox' }, drop, input, exBox);
   }
 
   // ---------- רינדור טופס ----------
@@ -111,9 +193,11 @@
     const files = new Map((opts.files || []).map((x) => [x.field_key, x]));
     const exemptions = { ...(opts.exemptions || {}) };
     const nodes = new Map();
-    let timer;
-    const changed = () => { clearTimeout(timer); timer = setTimeout(() => opts.onChange && opts.onChange(vals), 700); };
-    const flush = () => { clearTimeout(timer); return opts.onChange && opts.onChange(vals); };
+    let timer, lastSaved = JSON.stringify(opts.data || {});
+    // שומרים רק כשמשהו באמת השתנה מאז השמירה האחרונה
+    const save = () => { const j = JSON.stringify(vals); if (j === lastSaved || !opts.onChange) return; lastSaved = j; return opts.onChange(vals); };
+    const changed = () => { clearTimeout(timer); timer = setTimeout(save, 700); };
+    const flush = () => { clearTimeout(timer); return save(); };
 
     for (const f of tpl.fields) {
       if (vals[f.key] === undefined) {
@@ -126,7 +210,7 @@
         const dv = $e('div', { class: 'docview' });
         for (let i = 1; i <= (f.pages || 1); i++) dv.append($e('img', { src: opts.docUrl(f.doc + '-' + i + '.jpg'), alt: (f.label || 'מסמך') + ' עמוד ' + i, loading: 'lazy' }));
         container.append($e('div', { style: 'margin-top:14px' }, $e('b', { text: f.label || 'מסמך' }),
-          f.download ? $e('a', { href: opts.docUrl(f.download), target: '_blank', class: 'btn sec sm', style: 'margin-inline-start:10px', text: '⬇ הורדת PDF' }) : null, dv));
+          f.download ? $e('a', { href: opts.docUrl(f.download), target: '_blank', class: 'btn sec sm', style: 'margin-inline-start:10px', icon: 'download', text: 'הורדת PDF' }) : null, dv));
         continue;
       }
       const wrap = $e('div', { class: 'field', 'data-key': f.key });
@@ -198,5 +282,5 @@
     return { vals, collect: () => vals, validate, showErrors, flush };
   }
 
-  window.Forms = { $e, render, validIsraeliId };
+  window.Forms = { $e, icon, busy, render, validIsraeliId };
 })();

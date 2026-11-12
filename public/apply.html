@@ -20,12 +20,16 @@
 .feats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
 .feat{background:#f6f7fc;border:1px solid var(--line);border-radius:14px;padding:11px 12px;font-size:.88rem;font-weight:600;display:flex;gap:8px;align-items:center}
 .sec-h{display:flex;align-items:center;gap:10px;margin-bottom:2px}
-.sec-h .ic{width:40px;height:40px;border-radius:12px;background:var(--priBg);display:flex;align-items:center;justify-content:center;font-size:1.2rem}
+.sec-h .ic{width:40px;height:40px;border-radius:12px;background:var(--priBg);color:var(--pri);display:flex;align-items:center;justify-content:center}
+.feat .i{color:var(--pri)}
+.lockic{width:64px;height:64px;border-radius:20px;background:var(--priBg);color:var(--pri);display:flex;align-items:center;justify-content:center;margin:0 auto 10px}.lockic .i{width:30px;height:30px}
+.formerr{display:flex;gap:8px;align-items:center;margin-top:16px;padding:12px 14px;border-radius:14px;background:var(--errbg);color:var(--err);font-weight:600}
+.formerr[hidden]{display:none}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:520px){.row2,.feats{grid-template-columns:1fr}}
 .help{font-size:.82rem;color:var(--mut);margin-top:4px}
 .gopts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.gopt{border:1.5px solid var(--line);border-radius:14px;padding:13px;text-align:center;cursor:pointer;font-weight:600;background:#fff;min-height:50px}
+.gopt{font:inherit;border:1.5px solid var(--line);border-radius:14px;padding:13px;text-align:center;cursor:pointer;font-weight:600;background:#fff;min-height:50px}
 .gopt.on{border-color:var(--pri);background:var(--priBg);color:var(--pri)}
 .invalid .gopt{border-color:var(--err)}
 </style>
@@ -34,34 +38,38 @@
 <div class="wrap">
   <div class="card top">
     <div class="head"><div class="logo">אודי</div><div><h1>קליטת עובד/ת חדש/ה</h1><p id="company">...</p></div></div>
-    <div class="welcome"><b>👋 שלום וברוכים הבאים!</b><br>יצרנו עבורכם תהליך קליטה מהיר ומאובטח המותאם במיוחד לסמארטפון. מלאו את פרטיכם הראשוניים, ותועברו מיד למילוי טפסי הקליטה והחתימה הדיגיטלית.</div>
-    <div class="feats"><div class="feat">📷 צילום ת"ז ואישורים בנייד</div><div class="feat">🔒 חתימה דיגיטלית מאובטחת</div></div>
+    <div class="welcome"><b>שלום וברוכים הבאים!</b><br>יצרנו עבורכם תהליך קליטה מהיר ומאובטח המותאם במיוחד לסמארטפון. מלאו את פרטיכם הראשוניים, ותועברו מיד למילוי טפסי הקליטה והחתימה הדיגיטלית.</div>
+    <div class="feats"><div class="feat"><i data-i="camera"></i>צילום ת"ז ואישורים בנייד</div><div class="feat"><i data-i="lock"></i>חתימה דיגיטלית מאובטחת</div></div>
   </div>
   <form class="card" id="f" novalidate>
-    <div class="sec-h"><div class="ic">👤</div><h2 style="margin:0">הזנת פרטים מזהים לתחילת קליטה</h2></div>
+    <div class="sec-h"><div class="ic"><i data-i="user"></i></div><h2 style="margin:0">הזנת פרטים מזהים לתחילת קליטה</h2></div>
     <p class="muted" style="margin:4px 0 0">הפרטים ישמשו לפתיחת תיק העובד שלכם במערכת משאבי אנוש.</p>
     <hr style="border:0;border-top:1px solid var(--line);margin:16px 0 0">
     <div class="field"><label class="f">שם מלא בעברית <span class="req">*</span></label><input type="text" id="name" placeholder="למשל: רחל שפירא" autocomplete="name"><div class="err-msg" hidden></div></div>
     <div class="row2">
       <div class="field"><label class="f">מספר תעודת זהות (9 ספרות) <span class="req">*</span></label><input type="text" id="idn" inputmode="numeric" maxlength="9" dir="ltr" style="text-align:right" autocomplete="off"><div class="err-msg" hidden></div></div>
       <div class="field"><label class="f">מגדר (לקביעת טופס משטרה נכון) <span class="req">*</span></label>
-        <div class="gopts" id="g"><div class="gopt" data-v="female">אישה</div><div class="gopt" data-v="male">גבר</div></div><div class="err-msg" hidden></div></div>
+        <div class="gopts" id="g" role="radiogroup"><button type="button" role="radio" aria-checked="false" class="gopt" data-v="female">אישה</button><button type="button" role="radio" aria-checked="false" class="gopt" data-v="male">גבר</button></div><div class="err-msg" hidden></div></div>
     </div>
     <div class="row2">
       <div class="field"><label class="f">טלפון נייד <span class="req">*</span></label><input type="tel" id="phone" dir="ltr" style="text-align:right" autocomplete="tel"><div class="err-msg" hidden></div></div>
       <div class="field"><label class="f">דוא"ל</label><input type="email" id="email" dir="ltr" style="text-align:right" autocomplete="email"><div class="err-msg" hidden></div></div>
     </div>
-    <button class="btn" id="go" type="submit" style="width:100%;margin-top:22px">המשך למילוי הטפסים ←</button>
+    <div class="formerr" id="ferr" hidden></div>
+    <button class="btn" id="go" type="submit" style="width:100%;margin-top:22px">המשך למילוי הטפסים <i data-i="next"></i></button>
     <p class="help" style="text-align:center">המידע נשמר בצורה מאובטחת ומשמש לצורכי קליטה בלבד.</p>
   </form>
-  <div class="card" id="closed" hidden style="text-align:center"><div style="font-size:3rem">🔒</div><h2>ההרשמה העצמית סגורה כרגע</h2><p class="muted">פנו אל משאבי אנוש לקבלת קישור אישי.</p></div>
+  <div class="card" id="closed" hidden style="text-align:center"><div class="lockic"><i data-i="lock"></i></div><h2>ההרשמה העצמית סגורה כרגע</h2><p class="muted">פנו אל משאבי אנוש לקבלת קישור אישי.</p></div>
 </div>
+<script src="/forms.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
+const { icon, busy } = Forms;
+document.querySelectorAll('i[data-i]').forEach((n) => n.replaceWith(icon(n.dataset.i)));
 let gender = '';
 try { const t = localStorage.getItem('onb_tok'); if (t) fetch('/api/e/' + t).then((r) => r.ok && (location.replace('/e/' + t))); } catch {}
 fetch('/api/apply/info').then((r) => r.json()).then((i) => { $('company').textContent = i.company + (i.line ? ' · ' + i.line : ''); if (!i.enabled) { $('f').hidden = true; $('closed').hidden = false; } });
-$('g').addEventListener('click', (e) => { const o = e.target.closest('.gopt'); if (!o) return; gender = o.dataset.v; [...$('g').children].forEach((c) => c.classList.toggle('on', c === o)); clear($('g')); });
+$('g').addEventListener('click', (e) => { const o = e.target.closest('.gopt'); if (!o) return; gender = o.dataset.v; [...$('g').children].forEach((c) => { c.classList.toggle('on', c === o); c.setAttribute('aria-checked', c === o); }); clear($('g')); });
 function validId(v) { const s = v.replace(/\D/g, ''); if (s.length < 5 || s.length > 9) return false; const p = s.padStart(9, '0'); let t = 0; for (let i = 0; i < 9; i++) { let n = +p[i] * ((i % 2) + 1); if (n > 9) n -= 9; t += n; } return t % 10 === 0; }
 function mark(el, msg) { const f = el.closest('.field'); f.classList.add('invalid'); const e = f.querySelector('.err-msg'); e.textContent = msg; e.hidden = false; }
 function clear(el) { const f = el.closest('.field'); f.classList.remove('invalid'); f.querySelector('.err-msg').hidden = true; }
@@ -74,15 +82,15 @@ $('f').addEventListener('submit', async (ev) => {
   if (!gender) { mark($('g'), 'יש לבחור מגדר'); bad = true; }
   if (phone.replace(/\D/g, '').length < 9) { mark($('phone'), 'מספר טלפון לא תקין'); bad = true; }
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { mark($('email'), 'כתובת דוא"ל לא תקינה'); bad = true; }
+  $('ferr').hidden = true;
   if (bad) return;
-  $('go').disabled = true; $('go').textContent = 'פותח תיק...';
-  try {
+  await busy($('go'), async () => { try {
     const r = await fetch('/api/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ full_name: name, id_number: idn, gender, phone, email }) });
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || 'שגיאה');
     try { localStorage.setItem('onb_tok', j.token); } catch {}
     location.href = '/e/' + j.token;
-  } catch (e) { $('go').disabled = false; $('go').textContent = 'המשך למילוי הטפסים ←'; mark($('idn'), e.message); }
+  } catch (e) { $('ferr').replaceChildren(icon('alert'), e.message); $('ferr').hidden = false; } });
 });
 </script>
 </body>

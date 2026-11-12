@@ -55,8 +55,14 @@ CREATE INDEX IF NOT EXISTS ix_files_assign ON files(assignment_id);
 CREATE INDEX IF NOT EXISTS ix_emp_idnum ON employees(id_number);
 `);
 // הרחבות סכמה (אישור קליטה, הגשה סופית ואישור טופס על ידי משאבי אנוש)
-for (const sql of ['ALTER TABLE employees ADD COLUMN submitted_at TEXT', 'ALTER TABLE employees ADD COLUMN approved_at TEXT', 'ALTER TABLE employees ADD COLUMN approved_by TEXT',
-  'ALTER TABLE assignments ADD COLUMN approved INTEGER DEFAULT 0']) { try { db.exec(sql); } catch { /* העמודה כבר קיימת */ } }
+const addColumn = (sql) => { try { db.exec(sql); return true; } catch { return false; /* העמודה כבר קיימת */ } };
+if (addColumn('ALTER TABLE employees ADD COLUMN submitted_at TEXT')) {
+  // עובדים שסיימו את כל הטפסים בגרסה הקודמת (שבה החבילה נשלחה אוטומטית) נחשבים כמי ששלחו את התיק
+  db.exec(`UPDATE employees SET submitted_at=(SELECT MAX(submitted_at) FROM assignments WHERE employee_id=employees.id)
+    WHERE id IN (SELECT employee_id FROM assignments GROUP BY employee_id HAVING COUNT(*)>0 AND COUNT(*)=SUM(status='submitted'))`);
+}
+['ALTER TABLE employees ADD COLUMN approved_at TEXT', 'ALTER TABLE employees ADD COLUMN approved_by TEXT',
+  'ALTER TABLE assignments ADD COLUMN approved INTEGER DEFAULT 0', 'ALTER TABLE files ADD COLUMN approved INTEGER DEFAULT 0'].forEach(addColumn);
 
 // ---------- helpers ----------
 const now = () => new Date().toISOString();
@@ -182,21 +188,23 @@ function employeeRow(e) {
   const status = e.approved_at ? 'approved' : e.submitted_at ? 'review' : (done || a.touched || e.opened_at ? 'progress' : 'new');
   return { id: e.id, token: e.token, full_name: e.full_name, id_number: e.id_number, gender: e.gender, phone: e.phone, email: e.email,
     job_title: e.job_title, department: e.department, employee_no: e.employee_no, start_date: e.start_date, source: e.source,
-    created_at: e.created_at, total: a.total, done, approved: a.approved || 0, status, submitted_at: e.submitted_at, approved_at: e.approved_at, approved_by: e.approved_by, last_activity: a.last || e.opened_at || e.created_at,
+    created_at: e.created_at, total: a.total, done, approved: a.approved || 0, pending_exemptions: pendingExemptions(e.id), status, submitted_at: e.submitted_at, approved_at: e.approved_at, approved_by: e.approved_by, last_activity: a.last || e.opened_at || e.created_at,
     opened: !!e.opened_at, mail_status: e.mail_status, mail_at: e.mail_at, mail_error: e.mail_error };
 }
 function assignTemplates(empId, ids, gender) {
   const ins = db.prepare('INSERT OR IGNORE INTO assignments(employee_id,template_id,updated_at) VALUES(?,?,?)');
+  let added = 0;
   ids.forEach((id) => {
     const t = db.prepare('SELECT gender_rule FROM templates WHERE id=? AND active=1').get(id);
-    if (t && genderOk(t.gender_rule, gender)) ins.run(empId, id, now());
+    if (t && genderOk(t.gender_rule, gender)) added += Number(ins.run(empId, id, now()).changes);
   });
+  return added;
 }
 const defaultTemplateIds = (gender) => db.prepare('SELECT id,gender_rule FROM templates WHERE active=1 AND is_default=1 ORDER BY position,id').all().filter((t) => genderOk(t.gender_rule, gender)).map((t) => t.id);
 function assignmentView(a) {
   const t = db.prepare('SELECT * FROM templates WHERE id=?').get(a.template_id);
   return { id: a.id, status: a.status, approved: !!a.approved, data: JSON.parse(a.data || '{}'), exemptions: JSON.parse(a.exemptions || '{}'), updated_at: a.updated_at,
-    submitted_at: a.submitted_at, template: parseTpl(t), files: db.prepare('SELECT id,field_key,filename,mime FROM files WHERE assignment_id=?').all(a.id) };
+    submitted_at: a.submitted_at, template: parseTpl(t), files: db.prepare('SELECT id,field_key,filename,mime,approved FROM files WHERE assignment_id=?').all(a.id).map((f) => ({ ...f, approved: !!f.approved })) };
 }
 const prefillFor = (e) => ({ full_name: e.full_name, phone: e.phone, email: e.email, id_number: e.id_number, gender: e.gender === 'male' ? 'גבר' : e.gender === 'female' ? 'אישה' : '' });
 
@@ -345,15 +353,28 @@ setInterval(async () => {
 const allSubmitted = (empId) => { const c = db.prepare("SELECT COUNT(*) t, SUM(status='submitted') d FROM assignments WHERE employee_id=?").get(empId); return c.t > 0 && c.t === c.d; };
 // כל שינוי בטופס מחזיר את התיק ממצב "נשלח לבדיקה" למילוי
 const unsubmit = (empId) => db.prepare('UPDATE employees SET submitted_at=NULL,approved_at=NULL,approved_by=NULL WHERE id=?').run(empId);
+const pendingExemptions = (empId) => db.prepare("SELECT exemptions FROM assignments WHERE employee_id=? AND exemptions!='{}'").all(empId)
+  .reduce((n, a) => n + Object.values(JSON.parse(a.exemptions)).filter((x) => x.status === 'pending').length, 0);
+// עריכה של המועמד אחרי שהתיק נשלח מחזירה אותו למילוי; אחרי קליטה העריכה חסומה
+function candidateEdit(e) {
+  if (e.approved_at) throw new HttpError(409, 'התיק כבר אושר על ידי משאבי אנוש. לשינוי פנו אליהם.');
+  if (e.submitted_at) db.prepare('UPDATE employees SET submitted_at=NULL WHERE id=?').run(e.id);
+}
 
 // ---------- עדכונים בזמן אמת לדשבורד (Server-Sent Events) ----------
-const listeners = new Set();
+const listeners = new Map(); // res → sid
 let pushTimer = null;
 function broadcast() {
   if (pushTimer) return;
-  pushTimer = setTimeout(() => { pushTimer = null; for (const r of listeners) r.write(`data: ${Date.now()}\n\n`); }, 250);
+  pushTimer = setTimeout(() => { pushTimer = null; for (const r of listeners.keys()) r.write(`data: ${Date.now()}\n\n`); }, 250);
 }
-setInterval(() => { for (const r of listeners) r.write(': ping\n\n'); }, 25000).unref();
+// פינג כל 25 שניות; זרם שהסשן שלו פג או נמחק (יציאה, מחיקת משתמש) נסגר
+setInterval(() => {
+  for (const [r, sid] of listeners) {
+    const s = db.prepare('SELECT expires FROM sessions WHERE sid=?').get(sid);
+    if (!s || s.expires < Date.now()) { listeners.delete(r); r.end(); } else r.write(': ping\n\n');
+  }
+}, 25000).unref();
 
 // ---------- routes ----------
 const routes = [];
@@ -490,10 +511,11 @@ route('GET', '/api/templates/(\\d+)/attachment', async (req, res, m) => {
 route('GET', '/api/docs/([a-z0-9.-]+)', async (req, res, m) => { requireUser(req); streamDoc(res, m[1]); });
 
 route('GET', '/api/events', async (req, res) => {
-  requireUser(req);
+  const u = requireUser(req);
+  if (listeners.size >= 200) throw new HttpError(503, 'יותר מדי חיבורים פתוחים');
   res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
   res.write('retry: 3000\n\n');
-  listeners.add(res);
+  listeners.set(res, u.sid);
   req.on('close', () => listeners.delete(res));
 });
 
@@ -539,7 +561,9 @@ route('PUT', '/api/employees/(\\d+)', async (req, res, m) => {
 route('POST', '/api/employees/(\\d+)/assign', async (req, res, m) => {
   requireUser(req); const b = await readBody(req);
   const e = db.prepare('SELECT gender FROM employees WHERE id=?').get(+m[1]);
-  assignTemplates(+m[1], (b.template_ids || []).map(Number), e.gender);
+  if (!e) throw new HttpError(404, 'עובד לא נמצא');
+  // טופס חדש פותח מחדש את התיק: הוא כבר לא "נשלח" או "נקלט"
+  if (assignTemplates(+m[1], (b.template_ids || []).map(Number), e.gender)) unsubmit(+m[1]);
   send(res, 200, { ok: true });
 });
 route('DELETE', '/api/employees/(\\d+)', async (req, res, m) => {
@@ -565,6 +589,7 @@ route('POST', '/api/assignments/(\\d+)/reopen', async (req, res, m) => {
   const a = db.prepare('SELECT employee_id FROM assignments WHERE id=?').get(+m[1]);
   if (!a) throw new HttpError(404, 'הטופס לא נמצא');
   db.prepare("UPDATE assignments SET status='pending',approved=0,submitted_at=NULL,updated_at=? WHERE id=?").run(now(), +m[1]);
+  db.prepare('UPDATE files SET approved=0 WHERE assignment_id=?').run(+m[1]);
   unsubmit(a.employee_id);
   send(res, 200, { ok: true });
 });
@@ -580,10 +605,20 @@ route('POST', '/api/employees/(\\d+)/hire', async (req, res, m) => {
   const u = requireUser(req); const b = await readBody(req);
   const e = db.prepare('SELECT * FROM employees WHERE id=? AND archived=0').get(+m[1]);
   if (!e) throw new HttpError(404, 'עובד לא נמצא');
-  if (b.undo) { db.prepare('UPDATE employees SET approved_at=NULL,approved_by=NULL WHERE id=?').run(e.id); return send(res, 200, { ok: true }); }
+  if (b.undo) {
+    tx(() => {
+      db.prepare('UPDATE employees SET approved_at=NULL,approved_by=NULL WHERE id=?').run(e.id);
+      db.prepare('UPDATE assignments SET approved=0 WHERE employee_id=?').run(e.id);
+      db.prepare('UPDATE files SET approved=0 WHERE assignment_id IN (SELECT id FROM assignments WHERE employee_id=?)').run(e.id);
+    });
+    return send(res, 200, { ok: true });
+  }
   if (!e.submitted_at || !allSubmitted(e.id)) throw new HttpError(400, 'ניתן לקלוט רק לאחר שהמועמד השלים ושלח את כל הטפסים');
+  const pend = pendingExemptions(e.id);
+  if (pend) throw new HttpError(400, `יש ${pend} בקשות פטור ממסמך שממתינות להחלטה. אשרו או דחו אותן לפני הקליטה.`);
   tx(() => {
     db.prepare('UPDATE assignments SET approved=1 WHERE employee_id=?').run(e.id);
+    db.prepare('UPDATE files SET approved=1 WHERE assignment_id IN (SELECT id FROM assignments WHERE employee_id=?)').run(e.id);
     db.prepare('UPDATE employees SET approved_at=?,approved_by=? WHERE id=?').run(now(), u.name || u.username, e.id);
   });
   send(res, 200, { ok: true });
@@ -593,6 +628,15 @@ route('DELETE', '/api/assignments/(\\d+)', async (req, res, m) => {
   const fl = db.prepare('SELECT path FROM files WHERE assignment_id=?').all(+m[1]);
   db.prepare('DELETE FROM assignments WHERE id=?').run(+m[1]);
   fl.forEach((f) => fs.rm(path.join(UPLOAD_DIR, f.path), () => {}));
+  send(res, 200, { ok: true });
+});
+// אישור מסמך בודד על ידי משאבי אנוש (רק לאחר שהטופס הוגש)
+route('POST', '/api/files/(\\d+)/approve', async (req, res, m) => {
+  requireUser(req); const b = await readBody(req);
+  const f = db.prepare('SELECT f.id,a.status FROM files f JOIN assignments a ON a.id=f.assignment_id WHERE f.id=?').get(+m[1]);
+  if (!f) throw new HttpError(404, 'הקובץ לא נמצא');
+  if (b.approved && f.status !== 'submitted') throw new HttpError(400, 'ניתן לאשר מסמך רק לאחר שהטופס הוגש');
+  db.prepare('UPDATE files SET approved=? WHERE id=?').run(b.approved ? 1 : 0, f.id);
   send(res, 200, { ok: true });
 });
 route('GET', '/api/files/(\\d+)', async (req, res, m) => {
@@ -634,7 +678,7 @@ route('POST', '/api/exemptions/(\\d+)/decide', async (req, res, m) => {
   if (!ex[b.field] || !['approved', 'rejected'].includes(b.decision)) throw new HttpError(400, 'בקשה לא תקינה');
   ex[b.field].status = b.decision; ex[b.field].decided_at = now();
   db.prepare('UPDATE assignments SET exemptions=?,updated_at=? WHERE id=?').run(JSON.stringify(ex), now(), a.id);
-  if (b.decision === 'rejected') { db.prepare("UPDATE assignments SET status='pending',approved=0,submitted_at=NULL WHERE id=?").run(a.id); unsubmit(a.employee_id); } // חוזר לעובד להשלמה
+  if (b.decision === 'rejected') { db.prepare("UPDATE assignments SET status='pending',approved=0,submitted_at=NULL WHERE id=?").run(a.id); db.prepare('UPDATE files SET approved=0 WHERE assignment_id=?').run(a.id); unsubmit(a.employee_id); } // חוזר לעובד להשלמה
   send(res, 200, { ok: true });
 });
 
@@ -704,6 +748,7 @@ route('PUT', '/api/e/([a-f0-9]+)/forms/(\\d+)', async (req, res, m) => {
   const b = await readBody(req);
   const tpl = parseTpl(db.prepare('SELECT * FROM templates WHERE id=?').get(a.template_id));
   const data = sanitizeData(tpl, b.data || {});
+  candidateEdit(e);
   if (b.submit) {
     const files = db.prepare('SELECT field_key FROM files WHERE assignment_id=?').all(a.id);
     const errors = validateSubmission(tpl, data, files, JSON.parse(a.exemptions || '{}'));
@@ -720,23 +765,24 @@ route('PUT', '/api/e/([a-f0-9]+)/forms/(\\d+)', async (req, res, m) => {
   } else {
     db.prepare('UPDATE assignments SET data=?,updated_at=? WHERE id=?').run(JSON.stringify(data), now(), a.id);
   }
-  if (e.submitted_at) unsubmit(e.id);
   send(res, 200, { ok: true });
 });
 route('POST', '/api/e/([a-f0-9]+)/forms/(\\d+)/files', async (req, res, m) => {
-  const { a } = ownAssignment(m[1], m[2]);
+  const { e, a } = ownAssignment(m[1], m[2]);
   if (a.status === 'submitted') throw new HttpError(409, 'הטופס כבר הוגש');
   const b = await readBody(req);
   const tpl = parseTpl(db.prepare('SELECT * FROM templates WHERE id=?').get(a.template_id));
   if (!tpl.fields.some((f) => f.key === b.field && f.type === 'file')) throw new HttpError(400, 'שדה קובץ לא קיים');
+  candidateEdit(e);
   send(res, 200, saveFile(a.id, b.field, b));
 });
 route('POST', '/api/e/([a-f0-9]+)/forms/(\\d+)/exempt', async (req, res, m) => {
-  const { a } = ownAssignment(m[1], m[2]);
+  const { e, a } = ownAssignment(m[1], m[2]);
   if (a.status === 'submitted') throw new HttpError(409, 'הטופס כבר הוגש');
   const b = await readBody(req);
   const tpl = parseTpl(db.prepare('SELECT * FROM templates WHERE id=?').get(a.template_id));
   if (!tpl.fields.some((f) => f.key === b.field && f.type === 'file' && f.allow_exempt)) throw new HttpError(400, 'לא ניתן לבקש פטור לשדה זה');
+  candidateEdit(e);
   const ex = JSON.parse(a.exemptions || '{}');
   if (b.cancel) delete ex[b.field];
   else {

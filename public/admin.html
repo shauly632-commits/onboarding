@@ -83,6 +83,40 @@ iframe{border:0;width:100%;height:100%;display:block}
 .live{display:inline-flex;align-items:center;gap:6px;font-size:.8rem;color:var(--mut)}
 .live i{width:8px;height:8px;border-radius:99px;background:#9aa1b9}
 .live.on i{background:#16a34a;box-shadow:0 0 0 3px rgba(22,163,74,.18)}
+.stat .ic .i{width:24px;height:24px}
+.tcard .ic .i{width:26px;height:26px}
+.quick .btn .i{width:18px;height:18px}
+.vsw button{display:inline-flex;align-items:center;gap:6px}
+.btn.ok{background:var(--okbg);color:var(--ok);box-shadow:none;border:1px solid #bfe7d4}
+.okt{display:inline-flex;align-items:center;gap:5px;color:var(--ok);font-weight:600}
+.fnode{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px;border:1px solid var(--line);border-radius:14px;background:#fff}
+.fnode.ok{border-color:#bfe7d4;background:#f6fcf9}
+.fnode .th{width:56px;height:56px;border-radius:10px;overflow:hidden;flex:none;display:flex;align-items:center;justify-content:center;background:var(--priBg);color:var(--pri)}
+.fnode .th img{width:100%;height:100%;object-fit:cover}
+.fnode .fn{flex:1;min-width:120px;word-break:break-all}
+.ans dd .chip .i{width:14px;height:14px}
+/* דשבורד בנייד: כותרת קומפקטית וניווט בגלילה אופקית */
+@media(max-width:760px){
+  header.top .in{padding:8px 12px;gap:8px}
+  .org small,.org .chip,header.top .sp{display:none}
+  .org{flex:1;min-width:0;gap:8px}
+  .org>div:last-child{min-width:0}
+  .org b{font-size:.95rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .live{font-size:0;gap:0}
+  .logo{width:40px;height:40px;border-radius:13px;font-size:.85rem}
+  .nav{order:5;flex-basis:100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding:4px}
+  .nav::-webkit-scrollbar{display:none}
+  .pill{padding:.45em .7em;font-size:.86rem}
+  .btn.hdr{min-height:40px;width:40px;padding:0;border-radius:12px}
+  .btn.hdr .bl{display:none}
+  .stats{grid-template-columns:1fr 1fr;gap:10px;margin:14px 0}
+  .stat{padding:14px}.stat .n{font-size:1.8rem}.stat .ic{width:38px;height:38px}
+  .shell{padding:0 12px 60px}
+  .tblhead,.filters{padding-inline:14px}
+  .kanban{padding:12px 14px;grid-template-columns:repeat(4,minmax(78vw,1fr));scroll-snap-type:x mandatory}
+  .kcol{scroll-snap-align:start}
+}
+.exwarn{display:flex;gap:6px;align-items:center;color:var(--warn);font-weight:600;font-size:.9rem;margin-top:4px}
 .hirebar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:16px 18px;border-radius:16px;margin-bottom:16px}
 </style>
 </head>
@@ -90,10 +124,10 @@ iframe{border:0;width:100%;height:100%;display:block}
 <div id="root"></div>
 <script src="/forms.js"></script>
 <script>
-const { $e } = Forms;
+const { $e, icon, busy } = Forms;
 const root = document.getElementById('root');
 let me = null, view = 'employees', list = [], cfg = { capacity: 180 }, pendingEx = 0, tplCount = 0, simTarget = '', simDevice = 'phone';
-let detailId = null, boardMode = 'table';
+let detailId = null, boardMode = 'table', quietRender = false, renderSeq = 0;
 const flt = { q: '', s: '', d: '' };
 try { boardMode = localStorage.getItem('boardMode') || 'table'; } catch {}
 
@@ -104,7 +138,7 @@ async function api(path, method = 'GET', body) {
   if (!r.ok) throw new Error(j.error || 'שגיאה');
   return j;
 }
-function toast(msg, err) { const t = $e('div', { class: 'toast' + (err ? ' err' : ''), text: msg }); document.body.append(t); setTimeout(() => t.remove(), 3400); }
+function toast(msg, err) { const t = $e('div', { class: 'toast' + (err ? ' err' : ''), icon: err ? 'alert' : 'checkCircle', text: msg.replace(/\s*✓$/, '') }); document.body.append(t); setTimeout(() => t.remove(), 3400); }
 const guard = (fn) => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.message, true); } };
 const fmt = (s) => s ? new Date(s).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' }) : '—';
 const ago = (s) => { if (!s) return '—'; const m = Math.round((Date.now() - new Date(s)) / 60000); if (m < 1) return 'ממש עכשיו'; if (m < 60) return 'לפני ' + m + ' דק׳'; if (m < 1440) return 'לפני ' + Math.round(m / 60) + ' שעות'; return fmt(s); };
@@ -131,7 +165,7 @@ function liveRefresh() {
   const busy = document.querySelector('.modal') || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
   if (busy) { if (!livePending) { livePending = true; setTimeout(() => { livePending = false; liveRefresh(); }, 1500); } return; }
   const y = scrollY;
-  const done = view === 'detail' && detailId ? employeeDetail(detailId, true) : ['employees', 'exemptions'].includes(view) ? go() : refreshMeta().then(() => {});
+  const done = view === 'detail' && detailId ? employeeDetail(detailId, true) : ['employees', 'exemptions'].includes(view) ? go(true) : refreshMeta().then(() => {});
   Promise.resolve(done).then(() => scrollTo(0, y)).catch(() => {});
 }
 
@@ -139,46 +173,55 @@ function liveRefresh() {
 function showLogin() {
   root.textContent = '';
   const u = $e('input', { type: 'text', autocomplete: 'username', dir: 'ltr' }), p = $e('input', { type: 'password', autocomplete: 'current-password', dir: 'ltr' });
-  const go = guard(async () => { me = await api('/login', 'POST', { username: u.value, password: p.value }); await boot(); });
+  const btn = $e('button', { class: 'btn', style: 'width:100%;margin-top:20px', text: 'כניסה' });
+  const go = guard(() => busy(btn, async () => { me = await api('/login', 'POST', { username: u.value, password: p.value }); await boot(); }));
+  btn.addEventListener('click', go);
   p.addEventListener('keydown', (e) => e.key === 'Enter' && go());
   root.append($e('div', { class: 'login card' }, $e('div', { class: 'logo', style: 'margin-bottom:12px', text: 'אודי' }), $e('h1', { text: 'כניסה לדשבורד הקליטה' }),
     $e('label', { class: 'f', text: 'שם משתמש' }), u, $e('label', { class: 'f', text: 'סיסמה' }), p,
-    $e('button', { class: 'btn', style: 'width:100%;margin-top:20px', text: 'כניסה', onclick: go })));
+    btn));
 }
 
 // ---------- shell ----------
+function loading() {
+  const sh = root.querySelector('.shell');
+  if (sh) { sh.textContent = ''; sh.append($e('div', { class: 'loadbox' }, icon('loader'), 'טוען...')); }
+}
 function shell(content) {
   root.textContent = '';
-  const tab = (k, label, extra) => $e('button', { class: 'pill' + (view === k ? ' on' : ''), onclick: () => { view = k; go(); } }, label, extra);
+  const tab = (k, ic, label, extra) => $e('button', { class: 'pill' + (view === k ? ' on' : ''), icon: ic, onclick: () => { view = k; go(); } }, $e('span', { class: 'pl', text: label }), extra);
   root.append($e('header', { class: 'top noprint' }, $e('div', { class: 'in' },
     $e('div', { class: 'org' }, $e('div', { class: 'logo', text: 'אודי' }), $e('div', {}, $e('b', {}, me.company || 'קליטת עובדים', ' ', $e('span', { class: 'chip pri', text: 'דשבורד מנהל (' + (me.name || '') + ')' })), $e('small', { text: me.company_line || '' }))),
     $e('div', { class: 'nav' },
-      tab('employees', '👥 לוח עובדים (' + list.length + '/' + cfg.capacity + ')'),
-      tab('exemptions', '🛡 אישורי פטור ממסמך', pendingEx ? $e('span', { class: 'badge', text: pendingEx }) : null),
-      tab('templates', '📄 סל טפסים (' + tplCount + ')'),
-      tab('sim', '📱 סימולטור נייד'),
-      tab('settings', '⚙ הגדרות')),
+      tab('employees', 'users', 'לוח עובדים (' + list.length + '/' + cfg.capacity + ')'),
+      tab('exemptions', 'shield', 'אישורי פטור ממסמך', pendingEx ? $e('span', { class: 'badge', text: pendingEx }) : null),
+      tab('templates', 'file', 'סל טפסים (' + tplCount + ')'),
+      tab('sim', 'phone', 'סימולטור נייד'),
+      tab('settings', 'settings', 'הגדרות')),
     $e('span', { class: 'sp' }),
-    $e('button', { class: 'btn sec', text: '🔗 קישור למועמדים (apply/)', onclick: () => copy(location.origin + '/apply') }),
-    $e('button', { class: 'btn', text: '＋ קליטת עובד חדש', onclick: newEmployee }),
+    $e('button', { class: 'btn sec hdr', icon: 'link', title: 'העתקת קישור ההרשמה למועמדים', onclick: () => copy(location.origin + '/apply') }, $e('span', { class: 'bl', text: 'קישור למועמדים' })),
+    $e('button', { class: 'btn hdr', icon: 'userPlus', onclick: newEmployee }, $e('span', { class: 'bl', text: 'קליטת עובד חדש' })),
     liveDot(),
-    $e('button', { class: 'btn ghost icon', title: 'יציאה', text: '⎋', onclick: async () => { await api('/logout', 'POST'); me = null; es?.close(); showLogin(); } }))),
-  $e('div', { class: 'shell' }, content));
+    $e('button', { class: 'btn ghost icon', title: 'יציאה', icon: 'logout', onclick: async () => { await api('/logout', 'POST'); me = null; es?.close(); showLogin(); } }))),
+  $e('div', { class: 'shell' + (quietRender ? '' : ' fade') }, content));
+  quietRender = false;
 }
 async function refreshMeta() {
   const [l, ex, t] = await Promise.all([api('/employees'), api('/exemptions'), api('/templates')]);
   list = l; pendingEx = ex.filter((x) => x.status === 'pending').length; tplCount = t.length;
   return { ex, t };
 }
-function go() { if (view !== 'detail') detailId = null; ({ employees: employeesView, exemptions: exemptionsView, templates: templatesView, sim: simView, settings: settingsView, detail: () => employeeDetail(detailId) })[view](); }
+function go(quiet) { if (view !== 'detail') detailId = null; quietRender = !!quiet; renderSeq++; if (!quiet) loading(); ({ employees: employeesView, exemptions: exemptionsView, templates: templatesView, sim: simView, settings: settingsView, detail: () => employeeDetail(detailId) })[view](); }
 async function boot() { cfg.capacity = me.capacity || 180; view = 'employees'; await refreshMeta(); go(); connectLive(); }
 
 // ---------- employees ----------
 async function employeesView() {
+  const seq = renderSeq;
   await refreshMeta();
+  if (seq !== renderSeq || view !== 'employees') return; // המשתמש עבר למסך אחר בזמן הטעינה
   const cap = cfg.capacity;
   const n = (s) => list.filter((e) => e.status === s).length;
-  const stat = (icBg, ic, title, num, numColor, sub, bar, barOk) => $e('div', { class: 'card stat' }, $e('div', { class: 'ic', style: 'background:' + icBg, text: ic }),
+  const stat = (icBg, ic, title, num, numColor, sub, bar, barOk) => $e('div', { class: 'card stat' }, $e('div', { class: 'ic', style: 'background:' + icBg + ';color:' + numColor }, icon(ic)),
     $e('h4', { text: title }), $e('div', { class: 'n', style: 'color:' + numColor, text: num }), $e('small', { text: sub }), bar != null ? $e('div', { class: 'bar' + (barOk ? ' ok' : ''), style: 'margin-top:12px' }, $e('i', { style: 'width:' + bar + '%' })) : null);
   const q = $e('input', { type: 'text', value: flt.q, placeholder: 'חיפוש לפי שם, ת.ז., טלפון או דוא"ל...' });
   const fs = $e('select', {}, $e('option', { value: '', text: 'כל הסטטוסים' }), Object.entries(STATUS).map(([k, v]) => $e('option', { value: k, text: v[0] })));
@@ -197,9 +240,9 @@ async function employeesView() {
         $e('div', { style: 'margin-top:10px' }, progress(e)),
         $e('div', { class: 'row', style: 'margin-top:10px;justify-content:space-between' }, $e('small', { class: 'muted', text: e.opened ? ago(e.last_activity) : 'נשלח קישור' }),
           $e('div', { class: 'quick', onclick: (ev) => ev.stopPropagation() },
-            $e('button', { class: 'btn ghost', title: 'העתקת קישור', text: '⧉', onclick: () => copy(empUrl(e.token)) }),
-            e.phone ? $e('a', { class: 'btn', style: 'background:#e2f6ee;color:#0f9d6a', title: 'שליחה בוואטסאפ', target: '_blank', href: waLink(e), text: '💬' }) : null,
-            e.status === 'review' ? $e('button', { class: 'btn', style: 'background:var(--ok)', title: 'אשר וקלוט', text: '✓', onclick: () => hire(e, employeesView) }) : null)))),
+            $e('button', { class: 'btn ghost', title: 'העתקת קישור', icon: 'copy', onclick: () => copy(empUrl(e.token)) }),
+            e.phone ? $e('a', { class: 'btn', style: 'background:#e2f6ee;color:#0f9d6a', title: 'שליחה בוואטסאפ', target: '_blank', href: waLink(e), icon: 'chat' }) : null,
+            e.status === 'review' ? $e('button', { class: 'btn', style: 'background:var(--ok)', title: 'אשר וקלוט', icon: 'userCheck', onclick: () => hire(e, employeesView) }) : null)))),
       items.length ? null : $e('p', { class: 'muted', style: 'text-align:center;font-size:.85rem;margin:20px 0', text: '—' }));
   }));
   const draw = () => {
@@ -213,34 +256,34 @@ async function employeesView() {
       tb.append($e('tr', { class: 'click', onclick: () => employeeDetail(e.id) },
         $e('td', {}, $e('div', { class: 'who' }, $e('div', { class: 'avatar', text: initials(e.full_name) }), $e('div', {}, $e('b', { text: e.full_name }), $e('small', { class: 'muted', text: [e.id_number && 'ת.ז.: ' + e.id_number, e.phone].filter(Boolean).join(' · ') })))),
         $e('td', {}, $e('b', { text: e.job_title || '—' }), $e('div', { class: 'muted', style: 'font-size:.85rem', text: e.department || '' })),
-        $e('td', {}, $e('span', { class: 'chip ' + st[1], text: st[0] }), e.mail_status === 'sent' ? $e('div', { class: 'muted', style: 'font-size:.75rem;margin-top:3px', text: '✉ נשלח ליפעת' }) : e.mail_status === 'failed' ? $e('div', { style: 'font-size:.75rem;margin-top:3px;color:var(--err)', text: '✉ שליחה נכשלה' }) : null),
+        $e('td', {}, $e('span', { class: 'chip ' + st[1], text: st[0] }), e.mail_status === 'sent' ? $e('div', { class: 'muted', style: 'font-size:.75rem;margin-top:3px', icon: 'mail', text: 'נשלח ליפעת' }) : e.mail_status === 'failed' ? $e('div', { style: 'font-size:.75rem;margin-top:3px;color:var(--err)', icon: 'alert', text: 'שליחה נכשלה' }) : null),
         $e('td', { style: 'min-width:170px' }, progress(e)),
         $e('td', { class: 'muted', style: 'white-space:nowrap', text: e.opened ? ago(e.last_activity) : 'נשלח קישור' }),
         $e('td', { onclick: (ev) => ev.stopPropagation() }, $e('div', { class: 'quick' },
-          e.status === 'review' ? $e('button', { class: 'btn', style: 'background:var(--ok)', title: 'אשר וקלוט', text: '✓', onclick: () => hire(e, employeesView) }) : $e('button', { class: 'btn sec', title: 'פתיחת תיק', text: '👁', onclick: () => employeeDetail(e.id) }),
-          $e('button', { class: 'btn ghost', title: 'העתקת קישור', text: '⧉', onclick: () => copy(empUrl(e.token)) }),
-          e.phone ? $e('a', { class: 'btn', style: 'background:#e2f6ee;color:#0f9d6a', title: 'שליחה בוואטסאפ', target: '_blank', href: waLink(e), text: '💬' }) : null,
-          $e('button', { class: 'btn ghost', title: 'סימולטור נייד', text: '📱', onclick: () => { simTarget = e.token; simDevice = 'phone'; view = 'sim'; go(); } }),
-          $e('button', { class: 'btn ghost', title: 'מחיקה', text: '🗑', onclick: guard(async () => { if (confirm('למחוק את ' + e.full_name + ' וכל הנתונים והקבצים שלו? לא ניתן לשחזר.')) { await api('/employees/' + e.id, 'DELETE'); employeesView(); } }) })))));
+          e.status === 'review' ? $e('button', { class: 'btn', style: 'background:var(--ok)', title: 'אשר וקלוט', icon: 'userCheck', onclick: () => hire(e, employeesView) }) : $e('button', { class: 'btn sec', title: 'פתיחת תיק', icon: 'eye', onclick: () => employeeDetail(e.id) }),
+          $e('button', { class: 'btn ghost', title: 'העתקת קישור', icon: 'copy', onclick: () => copy(empUrl(e.token)) }),
+          e.phone ? $e('a', { class: 'btn', style: 'background:#e2f6ee;color:#0f9d6a', title: 'שליחה בוואטסאפ', target: '_blank', href: waLink(e), icon: 'chat' }) : null,
+          $e('button', { class: 'btn ghost', title: 'סימולטור נייד', icon: 'phone', onclick: () => { simTarget = e.token; simDevice = 'phone'; view = 'sim'; go(); } }),
+          $e('button', { class: 'btn ghost', title: 'מחיקה', icon: 'trash', onclick: guard(async () => { if (confirm('למחוק את ' + e.full_name + ' וכל הנתונים והקבצים שלו? לא ניתן לשחזר.')) { await api('/employees/' + e.id, 'DELETE'); employeesView(); } }) })))));
     });
     if (!tb.children.length) tb.append($e('tr', {}, $e('td', { colspan: 6, class: 'muted', style: 'text-align:center;padding:40px', text: list.length ? 'לא נמצאו תוצאות' : 'עדיין לא נוספו עובדים. לחצו על "קליטת עובד חדש" או שלחו למועמדים את קישור ההרשמה.' })));
   };
   [q, fs, fd].forEach((x) => x.addEventListener('input', draw)); draw();
-  const sw = $e('div', { class: 'vsw' }, [['table', '☰ טבלה'], ['kanban', '▦ קנבן']].map(([k, label]) => $e('button', { class: boardMode === k ? 'on' : '', text: label,
+  const sw = $e('div', { class: 'vsw' }, [['table', 'list', 'טבלה'], ['kanban', 'kanban', 'קנבן']].map(([k, ic, label]) => $e('button', { class: boardMode === k ? 'on' : '', icon: ic, text: label,
     onclick: () => { boardMode = k; try { localStorage.setItem('boardMode', k); } catch {} sw.querySelectorAll('button').forEach((b, i) => b.className = (i === 0) === (k === 'table') ? 'on' : ''); draw(); } })));
   const appr = n('approved');
   shell($e('div', {},
     $e('div', { class: 'stats' },
-      stat('var(--priBg)', '👥', 'סה״כ מועמדים', list.length, 'var(--ink)', 'מתוך ' + cap + ' · ' + n('new') + ' טרם התחילו', Math.min(100, 100 * list.length / cap)),
-      stat('var(--warnbg)', '⏱', 'בתהליך מילוי', n('progress'), 'var(--warn)', 'פתחו את הקישור והחלו למלא'),
-      stat('#e9e8fd', '🔎', 'ממתינים לבדיקה', n('review'), 'var(--pri)', 'שלחו תיק מלא · ממתינים לאישור שלך'),
-      stat('var(--okbg)', '✓', 'נקלטו ואושרו', appr, 'var(--ok)', 'עובדים פעילים (' + (list.length ? Math.round(100 * appr / list.length) : 0) + '%)', list.length ? 100 * appr / list.length : 0, true)),
+      stat('var(--priBg)', 'users', 'סה״כ מועמדים', list.length, 'var(--ink)', 'מתוך ' + cap + ' · ' + n('new') + ' טרם התחילו', Math.min(100, 100 * list.length / cap)),
+      stat('var(--warnbg)', 'clock', 'בתהליך מילוי', n('progress'), 'var(--warn)', 'פתחו את הקישור והחלו למלא'),
+      stat('#e9e8fd', 'search', 'ממתינים לבדיקה', n('review'), 'var(--pri)', 'שלחו תיק מלא · ממתינים לאישור שלך'),
+      stat('var(--okbg)', 'userCheck', 'נקלטו ואושרו', appr, 'var(--ok)', 'עובדים פעילים (' + (list.length ? Math.round(100 * appr / list.length) : 0) + '%)', list.length ? 100 * appr / list.length : 0, true)),
     $e('div', { class: 'card tblcard' },
       $e('div', { class: 'tblhead' }, $e('div', { class: 'row' },
         $e('div', {}, $e('h2', { style: 'margin:0', text: 'רשימת עובדים בתהליך קליטה' }), $e('span', { class: 'muted', text: 'מעקב חי אחר מילוי טפסים, חתימות דיגיטליות ואישורים רפואיים/משטרה' })), $e('span', { class: 'sp' }), sw,
-        $e('button', { class: 'btn', text: '＋ עובד חדש', onclick: newEmployee }),
-        $e('button', { class: 'btn ghost icon', title: 'רענון', text: '↻', onclick: employeesView }),
-        $e('a', { class: 'btn ghost', href: '/api/export.csv', text: '⬇ ייצוא לאקסל (שכר)' }))),
+        $e('button', { class: 'btn', icon: 'plus', text: 'עובד חדש', onclick: newEmployee }),
+        $e('button', { class: 'btn ghost icon', title: 'רענון', icon: 'refresh', onclick: employeesView }),
+        $e('a', { class: 'btn ghost', href: '/api/export.csv', icon: 'download', text: 'ייצוא לאקסל' }))),
       $e('div', { class: 'filters' }, q, fs, fd), board)));
 }
 
@@ -250,9 +293,9 @@ function linkModal(e) {
     $e('p', { class: 'muted', text: 'הקישור אישי וסודי. כל מי שמחזיק בו יכול למלא את הטפסים של העובד.' }),
     $e('div', { class: 'linkbox', text: url }),
     $e('div', { class: 'row', style: 'margin-top:14px' },
-      $e('button', { class: 'btn', text: 'העתקת קישור', onclick: () => copy(url) }),
-      e.phone ? $e('a', { class: 'btn sec', href: waLink(e), target: '_blank', text: '💬 שליחה בוואטסאפ' }) : null,
-      e.email ? $e('a', { class: 'btn sec', href: 'mailto:' + e.email + '?subject=' + encodeURIComponent('טפסי קליטה') + '&body=' + encodeURIComponent('שלום, אנא מלאו את טפסי הקליטה בקישור:\n' + url), text: '✉ שליחה במייל' }) : null,
+      $e('button', { class: 'btn', icon: 'copy', text: 'העתקת קישור', onclick: () => copy(url) }),
+      e.phone ? $e('a', { class: 'btn sec', href: waLink(e), target: '_blank', icon: 'chat', text: 'שליחה בוואטסאפ' }) : null,
+      e.email ? $e('a', { class: 'btn sec', href: 'mailto:' + e.email + '?subject=' + encodeURIComponent('טפסי קליטה') + '&body=' + encodeURIComponent('שלום, אנא מלאו את טפסי הקליטה בקישור:\n' + url), icon: 'mail', text: 'שליחה במייל' }) : null,
       $e('button', { class: 'btn ghost', text: 'סגירה', onclick: () => m.remove() }))));
 }
 
@@ -281,11 +324,25 @@ async function hire(e, after) {
   if (!confirm('לקלוט את ' + e.full_name + ' כעובד/ת פעיל/ה? כל הטפסים יסומנו כמאושרים.')) return;
   try { await api('/employees/' + e.id + '/hire', 'POST', {}); toast(e.full_name + ' נקלט/ה כעובד/ת פעיל/ה ✓'); after(); } catch (err) { toast(err.message, true); }
 }
+// מסמך בתיק העובד: תמונה מוקטנת, צפייה ואישור פרטני
+function fileNode(fl, empId, submitted) {
+  const img = fl.mime && fl.mime.startsWith('image/');
+  const btn = submitted ? $e('button', { class: 'btn sm ' + (fl.approved ? 'ok' : 'ghost'), icon: 'check', text: fl.approved ? 'מסמך אושר' : 'אישור מסמך',
+    onclick: guard(async () => { await busy(btn, () => api('/files/' + fl.id + '/approve', 'POST', { approved: !fl.approved })); employeeDetail(empId, true); }) }) : null;
+  return $e('div', { class: 'fnode' + (fl.approved ? ' ok' : '') },
+    $e('a', { href: '/api/files/' + fl.id, target: '_blank', class: 'th', title: 'פתיחה בחלון חדש' }, img ? $e('img', { src: '/api/files/' + fl.id, alt: '', loading: 'lazy' }) : icon('file')),
+    $e('a', { href: '/api/files/' + fl.id, target: '_blank', class: 'fn', text: fl.filename || 'קובץ' }), btn);
+}
 async function employeeDetail(id, silent) {
+  // רענון שקט רלוונטי רק אם עדיין מסתכלים על אותו עובד; פתיחה רגילה מבטלת רינדורים ישנים
+  if (silent && (view !== 'detail' || detailId !== id)) return;
+  const seq = silent ? renderSeq : ++renderSeq;
+  if (!silent) { view = 'detail'; detailId = id; loading(); }
   let d, tpls;
   try { [d, tpls] = await Promise.all([api('/employees/' + id), api('/templates')]); }
-  catch (err) { if (silent) { view = 'employees'; return go(); } throw err; }
-  view = 'detail'; detailId = id;
+  catch (err) { if (seq !== renderSeq) return; if (silent) { view = 'employees'; return go(); } throw err; }
+  if (seq !== renderSeq || view !== 'detail' || detailId !== id) return;
+  if (silent) quietRender = true;
   const e = d.employee, st = STATUS[e.status];
   const cards = d.assignments.map((a) => {
     const t = a.template, ok = a.status === 'submitted';
@@ -295,38 +352,40 @@ async function employeeDetail(id, silent) {
       if (['heading', 'paragraph', 'document'].includes(f.type)) return;
       const v = a.data[f.key]; let node;
       if (f.type === 'signature') node = v ? $e('img', { class: 'sigimg', src: v, alt: 'חתימה' }) : $e('span', { class: 'muted', text: '—' });
-      else if (f.type === 'file') node = fileMap[f.key] ? $e('a', { href: '/api/files/' + fileMap[f.key].id, target: '_blank', text: '📎 ' + (fileMap[f.key].filename || 'קובץ') }) : a.exemptions[f.key] ? $e('span', { class: 'chip', text: 'פטור (' + ({ approved: 'אושר', rejected: 'נדחה', pending: 'ממתין' })[a.exemptions[f.key].status] + '): ' + a.exemptions[f.key].reason }) : $e('span', { class: 'muted', text: '—' });
-      else if (f.type === 'consent') node = document.createTextNode(v ? '✓ אושר' : '—');
+      else if (f.type === 'file') node = fileMap[f.key] ? fileNode(fileMap[f.key], id, ok) : a.exemptions[f.key] ? $e('span', { class: 'chip', text: 'פטור (' + ({ approved: 'אושר', rejected: 'נדחה', pending: 'ממתין' })[a.exemptions[f.key].status] + '): ' + a.exemptions[f.key].reason }) : $e('span', { class: 'muted', text: '—' });
+      else if (f.type === 'consent') node = v ? $e('span', { class: 'okt', icon: 'check', text: 'אושר' }) : document.createTextNode('—');
       else node = document.createTextNode(v || '—');
       dl.append($e('dt', { text: f.label }), $e('dd', {}, node));
     });
     return $e('div', { class: 'card', style: 'margin-bottom:14px' },
-      $e('div', { class: 'row' }, $e('h3', { style: 'margin:0', text: t.title }), $e('span', { class: 'chip' + (ok ? ' ok' : ''), text: ok ? 'הוגש ' + fmt(a.submitted_at) : 'ממתין' }), a.approved ? $e('span', { class: 'chip ok', text: '✓ אושר ע״י משאבי אנוש' }) : null, $e('span', { class: 'sp' }),
-        ok ? $e('button', { class: 'btn sm noprint ' + (a.approved ? 'ghost' : 'sec'), text: a.approved ? 'ביטול אישור' : '✓ אישור הטופס', onclick: guard(async () => { await api('/assignments/' + a.id + '/approve', 'POST', { approved: !a.approved }); employeeDetail(id); }) }) : null,
+      $e('div', { class: 'row' }, $e('h3', { style: 'margin:0', text: t.title }), $e('span', { class: 'chip' + (ok ? ' ok' : ''), text: ok ? 'הוגש ' + fmt(a.submitted_at) : 'ממתין' }), a.approved ? $e('span', { class: 'chip ok', icon: 'check', text: 'אושר ע״י משאבי אנוש' }) : null, $e('span', { class: 'sp' }),
+        ok ? $e('button', { class: 'btn sm noprint ' + (a.approved ? 'ghost' : 'sec'), icon: a.approved ? 'undo' : 'check', text: a.approved ? 'ביטול אישור' : 'אישור הטופס', onclick: guard(async () => { await api('/assignments/' + a.id + '/approve', 'POST', { approved: !a.approved }); employeeDetail(id); }) }) : null,
         ok ? $e('button', { class: 'btn ghost sm noprint', text: 'פתיחה מחדש לעריכה', onclick: guard(async () => { if (confirm('לפתוח את הטופס לעריכה מחודשת על ידי העובד?')) { await api('/assignments/' + a.id + '/reopen', 'POST'); employeeDetail(id); } }) }) : null,
         $e('button', { class: 'btn ghost sm noprint', text: 'הסרה', onclick: guard(async () => { if (confirm('להסיר את הטופס מהעובד? נתונים וקבצים יימחקו.')) { await api('/assignments/' + a.id, 'DELETE'); employeeDetail(id); } }) })),
       $e('div', { style: 'margin-top:12px' }, Object.keys(a.data).length || a.files.length ? dl : $e('p', { class: 'muted', text: 'טרם מולא.' })));
   });
+  const allFiles = d.assignments.flatMap((a) => a.files), filesOk = allFiles.filter((f) => f.approved).length;
   const allOk = d.assignments.length && d.assignments.every((a) => a.status === 'submitted');
   const hireBar = e.status === 'approved'
-    ? $e('div', { class: 'hirebar noprint', style: 'background:var(--okbg)' }, $e('b', { text: '✅ נקלט/ה כעובד/ת פעיל/ה' }), $e('span', { class: 'muted', text: fmt(e.approved_at) + (e.approved_by ? ' · אושר ע״י ' + e.approved_by : '') }), $e('span', { class: 'sp' }),
-      $e('button', { class: 'btn ghost sm', text: 'ביטול קליטה', onclick: guard(async () => { if (confirm('לבטל את הקליטה ולהחזיר לבדיקה?')) { await api('/employees/' + id + '/hire', 'POST', { undo: true }); employeeDetail(id); } }) }))
+    ? $e('div', { class: 'hirebar noprint', style: 'background:var(--okbg)' }, $e('b', { icon: 'checkCircle', text: 'נקלט/ה כעובד/ת פעיל/ה' }), $e('span', { class: 'muted', text: fmt(e.approved_at) + (e.approved_by ? ' · אושר ע״י ' + e.approved_by : '') }), $e('span', { class: 'sp' }),
+      $e('button', { class: 'btn ghost sm', icon: 'undo', text: 'ביטול קליטה', onclick: guard(async () => { if (confirm('לבטל את הקליטה ולהחזיר לבדיקה? גם האישורים של הטפסים והמסמכים יבוטלו.')) { await api('/employees/' + id + '/hire', 'POST', { undo: true }); employeeDetail(id); } }) }))
     : e.status === 'review'
-      ? $e('div', { class: 'hirebar noprint', style: 'background:#eceafe' }, $e('div', {}, $e('b', { text: '🔎 התיק נשלח לבדיקה ' + fmt(e.submitted_at) }), $e('div', { class: 'muted', text: 'אושרו ' + e.approved + ' מתוך ' + e.total + ' טפסים. עברו על הטפסים ואשרו.' })), $e('span', { class: 'sp' }),
-        $e('button', { class: 'btn', style: 'background:var(--ok)', text: '✓ אשר וקלוט כעובד פעיל', onclick: () => hire(e, () => employeeDetail(id)) }))
+      ? $e('div', { class: 'hirebar noprint', style: 'background:#eceafe' }, $e('div', {}, $e('b', { icon: 'search', text: 'התיק נשלח לבדיקה ' + fmt(e.submitted_at) }), $e('div', { class: 'muted', text: 'אושרו ' + e.approved + '/' + e.total + ' טפסים ו-' + filesOk + '/' + allFiles.length + ' מסמכים. אפשר לאשר כל מסמך בנפרד, או לקלוט ולאשר הכל בבת אחת.' }),
+          e.pending_exemptions ? $e('div', { class: 'exwarn', icon: 'alert' }, e.pending_exemptions + ' בקשות פטור ממתינות להחלטה. ', $e('a', { href: '#', text: 'למסך אישורי הפטור', onclick: (ev) => { ev.preventDefault(); view = 'exemptions'; go(); } })) : null), $e('span', { class: 'sp' }),
+        $e('button', { class: 'btn', style: 'background:var(--ok)', icon: 'userCheck', text: 'אשר וקלוט כעובד פעיל', disabled: !!e.pending_exemptions, title: e.pending_exemptions ? 'יש להחליט על בקשות הפטור לפני הקליטה' : '', onclick: () => hire(e, () => employeeDetail(id)) }))
       : $e('div', { class: 'hirebar noprint', style: 'background:#f4f5fb' }, $e('span', { class: 'muted', text: allOk ? 'כל הטפסים הוגשו. ממתינים שהמועמד ילחץ "שליחה למשאבי אנוש".' : 'המועמד עדיין ממלא טפסים (' + e.done + '/' + e.total + '). כפתור הקליטה יופעל אחרי שהתיק יישלח.' }));
   const missing = tpls.filter((t) => !d.assignments.some((a) => a.template.id === t.id) && (t.gender_rule !== 'male' || e.gender === 'male'));
   shell($e('div', {},
-    $e('div', { class: 'row noprint', style: 'margin:22px 0' }, $e('button', { class: 'btn ghost', text: '→ חזרה ללוח', onclick: () => { view = 'employees'; go(); } }), $e('span', { class: 'sp' }),
-      $e('a', { class: 'btn ghost', target: '_blank', href: '/api/employees/' + id + '/package', text: '🖨 חבילת טפסים להדפסה / PDF' }),
-      $e('button', { class: 'btn ghost', text: '✉ שליחה מחדש ליפעת', onclick: guard(async () => { const r = await api('/employees/' + id + '/resend-mail', 'POST'); toast(r.status === 'sent' ? 'נשלח בהצלחה ✓' : r.error || 'השליחה נכשלה', r.status !== 'sent'); employeeDetail(id); }) }),
-      $e('button', { class: 'btn sec', text: 'קישור לעובד', onclick: () => linkModal(e) }),
-      $e('button', { class: 'btn ghost', text: 'עריכת פרטים', onclick: () => editEmployee(e) }),
-      $e('button', { class: 'btn danger', text: 'מחיקה', onclick: guard(async () => { if (confirm('למחוק את העובד וכל הנתונים והקבצים שלו? לא ניתן לשחזר.')) { await api('/employees/' + id, 'DELETE'); view = 'employees'; go(); } }) })),
+    $e('div', { class: 'row noprint', style: 'margin:22px 0' }, $e('button', { class: 'btn ghost', icon: 'back', text: 'חזרה ללוח', onclick: () => { view = 'employees'; go(); } }), $e('span', { class: 'sp' }),
+      $e('a', { class: 'btn ghost', target: '_blank', href: '/api/employees/' + id + '/package', icon: 'printer', text: 'הדפסה / PDF' }),
+      $e('button', { class: 'btn ghost', icon: 'mail', text: 'שליחה מחדש ליפעת', onclick: guard(async () => { const r = await api('/employees/' + id + '/resend-mail', 'POST'); toast(r.status === 'sent' ? 'נשלח בהצלחה ✓' : r.error || 'השליחה נכשלה', r.status !== 'sent'); employeeDetail(id); }) }),
+      $e('button', { class: 'btn sec', icon: 'link', text: 'קישור לעובד', onclick: () => linkModal(e) }),
+      $e('button', { class: 'btn ghost', icon: 'pen', text: 'עריכת פרטים', onclick: () => editEmployee(e) }),
+      $e('button', { class: 'btn danger', icon: 'trash', text: 'מחיקה', onclick: guard(async () => { if (confirm('למחוק את העובד וכל הנתונים והקבצים שלו? לא ניתן לשחזר.')) { await api('/employees/' + id, 'DELETE'); view = 'employees'; go(); } }) })),
     $e('div', { class: 'card', style: 'margin-bottom:16px' }, $e('div', { class: 'row' }, $e('div', { class: 'avatar', style: 'width:56px;height:56px;font-size:1.2rem', text: initials(e.full_name) }),
       $e('div', {}, $e('h1', { style: 'margin:0', text: e.full_name }), $e('div', { class: 'muted', text: [e.job_title, e.department, e.id_number && 'ת.ז. ' + e.id_number, e.phone, e.email].filter(Boolean).join(' · ') || '—' })), $e('span', { class: 'sp' }),
       $e('span', { class: 'chip ' + st[1], text: st[0] }),
-      e.mail_status ? $e('span', { class: 'chip ' + (e.mail_status === 'sent' ? 'ok' : e.mail_status === 'failed' ? 'err' : ''), title: e.mail_error || '', text: e.mail_status === 'sent' ? '✉ נשלח ליפעת ' + fmt(e.mail_at) : e.mail_status === 'failed' ? '✉ שליחה נכשלה' : '✉ המייל לא הוגדר' }) : null)),
+      e.mail_status ? $e('span', { class: 'chip ' + (e.mail_status === 'sent' ? 'ok' : e.mail_status === 'failed' ? 'err' : ''), title: e.mail_error || '', icon: e.mail_status === 'sent' ? 'mail' : 'alert', text: e.mail_status === 'sent' ? 'נשלח ליפעת ' + fmt(e.mail_at) : e.mail_status === 'failed' ? 'שליחה נכשלה' : 'המייל לא הוגדר' }) : null)),
     hireBar, cards,
     missing.length ? $e('div', { class: 'card noprint' }, $e('h3', { text: 'הוספת טפסים לעובד' }), (() => {
       const cs = missing.map((t) => [t, $e('input', { type: 'checkbox' })]);
@@ -343,41 +402,43 @@ function editEmployee(e) {
 
 // ---------- exemptions ----------
 async function exemptionsView() {
+  const seq = renderSeq;
   const { ex } = await refreshMeta();
+  if (seq !== renderSeq || view !== 'exemptions') return;
   const rows = ex.map((x) => $e('div', { class: 'exrow' },
     $e('div', { style: 'flex:1;min-width:240px' }, $e('b', { text: x.employee }), $e('div', { class: 'muted', text: x.template + ' · ' + x.field }), $e('div', { text: 'סיבה: ' + x.reason }), $e('small', { class: 'muted', text: fmt(x.at) })),
     x.status === 'pending' ? $e('div', { class: 'row' },
-      $e('button', { class: 'btn', style: 'background:var(--ok)', text: '✓ אישור פטור', onclick: guard(async () => { await api('/exemptions/' + x.assignment_id + '/decide', 'POST', { field: x.field_key, decision: 'approved' }); exemptionsView(); }) }),
-      $e('button', { class: 'btn ghost', text: '✕ דחייה (העובד יתבקש להעלות)', onclick: guard(async () => { await api('/exemptions/' + x.assignment_id + '/decide', 'POST', { field: x.field_key, decision: 'rejected' }); exemptionsView(); }) }))
+      $e('button', { class: 'btn', style: 'background:var(--ok)', icon: 'check', text: 'אישור פטור', onclick: guard(async () => { await api('/exemptions/' + x.assignment_id + '/decide', 'POST', { field: x.field_key, decision: 'approved' }); exemptionsView(); }) }),
+      $e('button', { class: 'btn ghost', icon: 'x', text: 'דחייה (העובד יתבקש להעלות)', onclick: guard(async () => { await api('/exemptions/' + x.assignment_id + '/decide', 'POST', { field: x.field_key, decision: 'rejected' }); exemptionsView(); }) }))
       : $e('span', { class: 'chip ' + (x.status === 'approved' ? 'ok' : 'err'), text: x.status === 'approved' ? 'אושר' : 'נדחה' }),
     $e('button', { class: 'btn sec sm', text: 'פתיחת תיק', onclick: () => employeeDetail(x.employee_id) })));
   shell($e('div', {}, $e('h1', { style: 'margin:24px 0 4px', text: 'אישורי פטור ממסמך' }),
     $e('p', { class: 'muted', text: 'עובדים שאין להם מסמך מסוים (למשל ספח, אישור פנסיה) יכולים לבקש פטור וסיבה. אישור או דחייה כאן.' }),
-    $e('div', { class: 'card' }, rows.length ? rows : $e('p', { class: 'muted', style: 'text-align:center;padding:30px', text: 'אין בקשות פטור כרגע 🎉' }))));
+    $e('div', { class: 'card' }, rows.length ? rows : $e('p', { class: 'muted', style: 'text-align:center;padding:30px', text: 'אין בקשות פטור כרגע' }))));
 }
 
 // ---------- templates ----------
 const TYPES = { text: 'טקסט קצר', textarea: 'טקסט ארוך', number: 'מספר', date: 'תאריך', phone: 'טלפון', email: 'דוא"ל', idnumber: 'תעודת זהות', select: 'רשימה נפתחת', radio: 'בחירה יחידה', consent: 'תיבת אישור', file: 'העלאת קובץ / צילום', signature: 'חתימה', heading: 'כותרת', paragraph: 'פסקת טקסט (נוסח הצהרה)' };
 const CATS = ['פרטים אישיים ושכר', 'בטחון ומשטרה', 'העסקה והסכמים', 'מסמכים', 'כללי'];
-const ICONS = { 'בטחון ומשטרה': '🛡', 'פרטים אישיים ושכר': '🪪', 'העסקה והסכמים': '📝', 'מסמכים': '📎' };
+const ICONS = { 'בטחון ומשטרה': 'shield', 'פרטים אישיים ושכר': 'idcard', 'העסקה והסכמים': 'pen', 'מסמכים': 'folder' };
 async function templatesView() {
   const { t: tpls } = await refreshMeta();
   const cards = tpls.map((t, i) => {
     const flds = t.fields.filter((f) => !['heading', 'paragraph', 'document'].includes(f.type));
     return $e('div', { class: 'card tcard', onclick: () => editTemplate(t) },
-      $e('div', { class: 'h' }, $e('div', { class: 'ic', text: ICONS[t.category] || '📄' }), $e('div', { class: 'chips' }, t.mandatory ? $e('span', { class: 'chip err', text: 'חובה' }) : $e('span', { class: 'chip gray', text: 'רשות' }), $e('span', { class: 'chip pri', text: t.category }), t.gender_rule === 'male' ? $e('span', { class: 'chip gray', text: 'גברים בלבד' }) : null)),
+      $e('div', { class: 'h' }, $e('div', { class: 'ic' }, icon(ICONS[t.category] || 'file')), $e('div', { class: 'chips' }, t.mandatory ? $e('span', { class: 'chip err', text: 'חובה' }) : $e('span', { class: 'chip gray', text: 'רשות' }), $e('span', { class: 'chip pri', text: t.category }), t.gender_rule === 'male' ? $e('span', { class: 'chip gray', text: 'גברים בלבד' }) : null)),
       $e('h3', { text: (i + 1) + '. ' + t.title }), $e('p', { text: t.description }),
       $e('div', { class: 'fl' }, 'שדות כלולים (' + flds.length + '):'),
       $e('div', { class: 'chips' }, flds.slice(0, 4).map((f) => $e('span', { class: 'chip gray', style: 'font-weight:500', text: f.label.slice(0, 26) })), flds.length > 4 ? $e('span', { class: 'chip gray', text: '+' + (flds.length - 4) + ' עוד' }) : null),
       $e('div', { class: 'f', onclick: (ev) => ev.stopPropagation() },
-        $e('span', { class: 'row', style: 'gap:4px' }, $e('button', { class: 'btn ghost sm', text: '🗑', onclick: guard(async () => { if (confirm('למחוק את הטופס "' + t.title + '"? (אם כבר הוקצה לעובדים הוא יוסתר ונתוני העבר יישמרו)')) { await api('/templates/' + t.id, 'DELETE'); templatesView(); } }) }),
+        $e('span', { class: 'row', style: 'gap:4px' }, $e('button', { class: 'btn ghost sm', title: 'מחיקה', icon: 'trash', onclick: guard(async () => { if (confirm('למחוק את הטופס "' + t.title + '"? (אם כבר הוקצה לעובדים הוא יוסתר ונתוני העבר יישמרו)')) { await api('/templates/' + t.id, 'DELETE'); templatesView(); } }) }),
           $e('button', { class: 'btn ghost sm', text: '▲', disabled: i === 0, onclick: guard(async () => { await api('/templates/' + t.id + '/move', 'POST', { dir: 'up' }); templatesView(); }) }),
           $e('button', { class: 'btn ghost sm', text: '▼', disabled: i === tpls.length - 1, onclick: guard(async () => { await api('/templates/' + t.id + '/move', 'POST', { dir: 'down' }); templatesView(); }) })),
         $e('span', { text: '⏱ כ-' + Math.max(1, Math.round(flds.length / 4)) + ' דקות מילוי' })));
   });
   shell($e('div', {}, $e('div', { class: 'card', style: 'margin:22px 0;display:flex;gap:14px;align-items:center;flex-wrap:wrap' },
     $e('div', { style: 'flex:1;min-width:240px' }, $e('h2', { style: 'margin:0', text: 'סל טפסי קליטה מובנים ומותאמים (' + tpls.length + ')' }), $e('span', { class: 'muted', text: 'טפסים אלה מוצגים באופן אוטומטי לכל ' + cfg.capacity + ' העובדים למילוי מהנייד או מהמחשב. לחצו על טופס לעריכה.' })),
-    $e('button', { class: 'btn', text: '＋ הוסף טופס חדש', onclick: () => editTemplate(null) })), $e('div', { class: 'cards' }, cards)));
+    $e('button', { class: 'btn', icon: 'plus', text: 'הוסף טופס חדש', onclick: () => editTemplate(null) })), $e('div', { class: 'cards' }, cards)));
 }
 
 function editTemplate(t) {
@@ -391,7 +452,7 @@ function editTemplate(t) {
   const redraw = () => {
     fieldsBox.textContent = '';
     model.fields.forEach((f, i) => {
-      if (f.type === 'document') { fieldsBox.append($e('div', { class: 'fb' }, $e('div', { class: 'r' }, $e('b', { text: '📄 מסמך להצגה: ' + (f.label || f.doc) + ' (' + f.pages + ' עמ׳)' }), $e('span', { class: 'sp' }), $e('span', { class: 'muted', text: 'קבוע (צילום המסמך המקורי)' })))); return; }
+      if (f.type === 'document') { fieldsBox.append($e('div', { class: 'fb' }, $e('div', { class: 'r' }, $e('b', { icon: 'file', text: 'מסמך להצגה: ' + (f.label || f.doc) + ' (' + f.pages + ' עמ׳)' }), $e('span', { class: 'sp' }), $e('span', { class: 'muted', text: 'קבוע (צילום המסמך המקורי)' })))); return; }
       const isText = ['heading', 'paragraph'].includes(f.type);
       const lab = $e(f.type === 'paragraph' ? 'textarea' : 'input', { type: 'text', placeholder: f.type === 'paragraph' ? 'הטקסט להצגה' : 'שם השדה', style: 'flex:1;min-width:160px' });
       lab.value = f.type === 'paragraph' ? (f.text || '') : (f.label || '');
@@ -405,7 +466,7 @@ function editTemplate(t) {
         f.type === 'file' ? $e('label', { style: 'display:flex;gap:4px;align-items:center' }, ex, 'אפשר לבקש פטור') : null,
         $e('button', { class: 'btn ghost sm', text: '▲', disabled: i === 0, onclick: () => { [model.fields[i - 1], model.fields[i]] = [model.fields[i], model.fields[i - 1]]; redraw(); } }),
         $e('button', { class: 'btn ghost sm', text: '▼', disabled: i === model.fields.length - 1, onclick: () => { [model.fields[i + 1], model.fields[i]] = [model.fields[i], model.fields[i + 1]]; redraw(); } }),
-        $e('button', { class: 'btn ghost sm', text: '✕', onclick: () => { model.fields.splice(i, 1); redraw(); } })));
+        $e('button', { class: 'btn ghost sm', title: 'הסרת שדה', icon: 'x', onclick: () => { model.fields.splice(i, 1); redraw(); } })));
       if (['select', 'radio'].includes(f.type)) {
         const op = $e('input', { type: 'text', style: 'margin-top:8px', placeholder: 'אפשרויות מופרדות בפסיק', value: (f.options || []).join(', ') });
         op.addEventListener('input', () => f.options = op.value.split(/[,،]/).map((s) => s.trim()).filter(Boolean)); box.append(op);
@@ -423,7 +484,7 @@ function editTemplate(t) {
     $e('div', { class: 'row', style: 'margin-top:12px' }, $e('div', { style: 'flex:1;min-width:180px' }, $e('label', { class: 'f', style: 'margin-top:0', text: 'קטגוריה' }), cat), $e('div', { style: 'flex:1;min-width:180px' }, $e('label', { class: 'f', style: 'margin-top:0', text: 'מיועד ל' }), gr)),
     $e('div', { class: 'checks', style: 'margin-top:10px' }, $e('label', {}, def, 'להקצות אוטומטית לכל עובד חדש'), $e('label', {}, man, 'טופס חובה')),
     $e('label', { class: 'f', text: 'שדות הטופס' }), fieldsBox, add,
-    t ? $e('div', {}, $e('label', { class: 'f', text: 'קובץ מצורף לעובד (למשל טופס PDF להורדה)' }), t.attachment ? $e('p', {}, '📎 ' + t.attachment.name + ' ', $e('a', { href: '/api/templates/' + t.id + '/attachment', target: '_blank', text: 'צפייה' }), ' ',
+    t ? $e('div', {}, $e('label', { class: 'f', text: 'קובץ מצורף לעובד (למשל טופס PDF להורדה)' }), t.attachment ? $e('p', {}, icon('clip'), ' ' + t.attachment.name + ' ', $e('a', { href: '/api/templates/' + t.id + '/attachment', target: '_blank', text: 'צפייה' }), ' ',
       $e('button', { class: 'btn ghost sm', text: 'הסרה', onclick: guard(async () => { await api('/templates/' + t.id + '/attachment', 'DELETE'); m.remove(); templatesView(); }) })) : null, att) : $e('p', { class: 'muted', text: 'ניתן לצרף קובץ לאחר שמירת הטופס.' }),
     $e('div', { class: 'row', style: 'margin-top:22px' },
       $e('button', { class: 'btn', text: 'שמירה', onclick: guard(async () => {
@@ -448,8 +509,8 @@ async function simView() {
   const wrap = $e('div', { class: simDevice === 'phone' ? 'phone' : 'desk' }, frame);
   sel.addEventListener('change', () => { simTarget = sel.value; frame.src = url(); });
   shell($e('div', {}, $e('div', { class: 'row', style: 'margin:22px 0' }, $e('h1', { style: 'margin:0', text: 'סימולטור נייד ותצוגת עובד' }), $e('span', { class: 'sp' }), sel,
-    $e('button', { class: 'btn ' + (simDevice === 'phone' ? '' : 'ghost'), text: '📱 נייד', onclick: () => { simDevice = 'phone'; simView(); } }),
-    $e('button', { class: 'btn ' + (simDevice === 'desk' ? '' : 'ghost'), text: '🖥 מחשב', onclick: () => { simDevice = 'desk'; simView(); } })),
+    $e('button', { class: 'btn ' + (simDevice === 'phone' ? '' : 'ghost'), icon: 'phone', text: 'נייד', onclick: () => { simDevice = 'phone'; simView(); } }),
+    $e('button', { class: 'btn ' + (simDevice === 'desk' ? '' : 'ghost'), icon: 'monitor', text: 'מחשב', onclick: () => { simDevice = 'desk'; simView(); } })),
   $e('p', { class: 'muted', text: 'כך העובד רואה את התהליך. שימו לב: מילוי בסימולטור של עובד קיים נשמר בתיק שלו.' }), wrap));
 }
 
@@ -466,7 +527,7 @@ async function settingsView() {
   const row = (label, el) => [$e('label', { class: 'f', text: label }), el];
   const save = guard(async () => { const b = Object.fromEntries(Object.entries(f).map(([k, i]) => [k, i.value])); b.apply_enabled = apply.checked; await api('/settings', 'PUT', b); toast('ההגדרות נשמרו ✓'); me.company = b.company_name; cfg.capacity = +b.capacity || 180; });
   shell($e('div', {}, $e('h1', { style: 'margin:24px 0', text: 'הגדרות' }),
-    $e('div', { class: 'card', style: 'margin-bottom:16px' }, $e('h3', { text: '✉ שליחה אוטומטית של תיק הקליטה למשאבי אנוש' }),
+    $e('div', { class: 'card', style: 'margin-bottom:16px' }, $e('h3', { icon: 'mail', text: 'שליחה אוטומטית של תיק הקליטה למשאבי אנוש' }),
       $e('p', { class: 'muted', text: 'כשעובד מסיים למלא את כל הטפסים, נשלח אוטומטית מייל אחד ליפעת עם סיכום מלא, החתימות, כל הקבצים שהעלה ותעודות המוסד של טפסי המשטרה. נדרש חשבון מייל לשליחה (ב-Gmail: סיסמת אפליקציה).' }),
       row('כתובת מייל של משאבי אנוש (היעד)', f.hr_email),
       $e('div', { class: 'row' }, $e('div', { style: 'flex:2;min-width:200px' }, row('שרת SMTP', f.smtp_host)), $e('div', { style: 'flex:1;min-width:100px' }, row('פורט (465 או 587)', f.smtp_port))),
@@ -476,7 +537,7 @@ async function settingsView() {
     $e('div', { class: 'card', style: 'margin-bottom:16px' }, $e('h3', { text: 'פרטי הארגון והרשמה' }), row('שם הארגון', f.company_name), row('תת-כותרת', f.company_line), row('מספר העובדים המתוכנן', f.capacity),
       $e('label', { class: 'checks', style: 'display:flex;gap:8px;margin-top:14px;align-items:center' }, apply, 'לאפשר הרשמה עצמית של מועמדים בקישור /apply'),
       $e('div', { class: 'row', style: 'margin-top:18px' }, $e('button', { class: 'btn', text: 'שמירת הגדרות', onclick: save }),
-        $e('button', { class: 'btn sec', text: '✉ שליחת מייל בדיקה', onclick: guard(async () => { await save(); await api('/settings/test-mail', 'POST'); toast('מייל הבדיקה נשלח ✓'); }) }))),
+        $e('button', { class: 'btn sec', icon: 'send', text: 'שליחת מייל בדיקה', onclick: guard(async () => { await save(); await api('/settings/test-mail', 'POST'); toast('מייל הבדיקה נשלח ✓'); }) }))),
     $e('div', { class: 'card', style: 'margin-bottom:16px' }, $e('h3', { text: 'משתמשי מערכת (צוות משאבי אנוש)' }),
       $e('p', { class: 'muted', text: 'כל משתמש נכנס עם שם וסיסמה משלו, וכולם עובדים במקביל על אותם נתונים.' }),
       $e('table', {}, $e('tbody', {}, users.map((u) => $e('tr', {}, $e('td', { text: u.name || u.username }), $e('td', { dir: 'ltr', style: 'text-align:right', text: u.username }),
