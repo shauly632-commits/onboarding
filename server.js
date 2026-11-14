@@ -62,7 +62,9 @@ if (addColumn('ALTER TABLE employees ADD COLUMN submitted_at TEXT')) {
     WHERE id IN (SELECT employee_id FROM assignments GROUP BY employee_id HAVING COUNT(*)>0 AND COUNT(*)=SUM(status='submitted'))`);
 }
 ['ALTER TABLE employees ADD COLUMN approved_at TEXT', 'ALTER TABLE employees ADD COLUMN approved_by TEXT',
-  'ALTER TABLE assignments ADD COLUMN approved INTEGER DEFAULT 0', 'ALTER TABLE files ADD COLUMN approved INTEGER DEFAULT 0'].forEach(addColumn);
+  'ALTER TABLE assignments ADD COLUMN approved INTEGER DEFAULT 0', 'ALTER TABLE files ADD COLUMN approved INTEGER DEFAULT 0',
+  // עובדים פעילים: סטטוס העסקה והערות פנימיות
+  "ALTER TABLE employees ADD COLUMN employment_status TEXT DEFAULT 'active'", "ALTER TABLE employees ADD COLUMN notes TEXT DEFAULT ''"].forEach(addColumn);
 
 // ---------- helpers ----------
 const now = () => new Date().toISOString();
@@ -181,7 +183,8 @@ function cleanFields(fields) {
 }
 
 const genderOk = (rule, gender) => rule !== 'male' || gender === 'male';
-function employeeRow(e) {
+// memberships: מפה מוכנה מראש (עובד → קבוצות) כשמחשבים רשימה שלמה, כדי לחסוך שאילתה לכל עובד
+function employeeRow(e, memberships) {
   const a = db.prepare("SELECT COUNT(*) total, SUM(status='submitted') done, SUM(approved=1) approved, SUM(data!='{}' OR status='submitted') touched, MAX(updated_at) last FROM assignments WHERE employee_id=?").get(e.id);
   const done = a.done || 0;
   // new → progress → review (המועמד שלח את התיק) → approved (נקלט כעובד פעיל)
@@ -189,7 +192,9 @@ function employeeRow(e) {
   return { id: e.id, token: e.token, full_name: e.full_name, id_number: e.id_number, gender: e.gender, phone: e.phone, email: e.email,
     job_title: e.job_title, department: e.department, employee_no: e.employee_no, start_date: e.start_date, source: e.source,
     created_at: e.created_at, total: a.total, done, approved: a.approved || 0, pending_exemptions: pendingExemptions(e.id), status, submitted_at: e.submitted_at, approved_at: e.approved_at, approved_by: e.approved_by, last_activity: a.last || e.opened_at || e.created_at,
-    opened: !!e.opened_at, mail_status: e.mail_status, mail_at: e.mail_at, mail_error: e.mail_error };
+    opened: !!e.opened_at, mail_status: e.mail_status, mail_at: e.mail_at, mail_error: e.mail_error,
+    employment_status: e.employment_status || 'active', notes: e.notes || '',
+    groups: memberships ? memberships.get(e.id) || [] : db.prepare('SELECT group_id FROM emp_group_members WHERE employee_id=?').all(e.id).map((g) => g.group_id) };
 }
 function assignTemplates(empId, ids, gender) {
   const ins = db.prepare('INSERT OR IGNORE INTO assignments(employee_id,template_id,updated_at) VALUES(?,?,?)');
@@ -522,7 +527,9 @@ route('GET', '/api/events', async (req, res) => {
 // employees (admin)
 route('GET', '/api/employees', async (req, res) => {
   requireUser(req);
-  send(res, 200, db.prepare('SELECT * FROM employees WHERE archived=0 ORDER BY id DESC').all().map(employeeRow));
+  const mem = new Map();
+  for (const r of db.prepare('SELECT employee_id,group_id FROM emp_group_members').all()) mem.set(r.employee_id, [...(mem.get(r.employee_id) || []), r.group_id]);
+  send(res, 200, db.prepare('SELECT * FROM employees WHERE archived=0 ORDER BY id DESC').all().map((e) => employeeRow(e, mem)));
 });
 const empFields = (b) => [String(b.full_name || '').trim().slice(0, 100), String(b.id_number || '').replace(/\D/g, '').slice(0, 9), b.gender === 'male' || b.gender === 'female' ? b.gender : '',
   String(b.phone || '').slice(0, 30), String(b.email || '').slice(0, 100), String(b.job_title || '').slice(0, 100), String(b.department || '').slice(0, 100),
@@ -732,7 +739,7 @@ route('POST', '/api/e/([a-f0-9]+)/submit', async (req, res, m) => {
 route('GET', '/api/e/([a-f0-9]+)/manifest.json', async (req, res, m) => {
   const e = empByToken(m[1]);
   send(res, 200, { name: 'קליטת עובדים', short_name: 'קליטה', lang: 'he', dir: 'rtl', start_url: `/e/${m[1]}`, scope: '/e/', display: 'standalone',
-    background_color: '#f4f5fb', theme_color: '#4f46e5', description: 'טפסי קליטה עבור ' + e.full_name,
+    background_color: '#f6f7fb', theme_color: '#0073ea', description: 'טפסי קליטה עבור ' + e.full_name,
     icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png' }] },
   { 'Content-Type': 'application/manifest+json; charset=utf-8' });
 });
@@ -806,6 +813,11 @@ route('GET', '/api/e/([a-f0-9]+)/templates/(\\d+)/attachment', async (req, res, 
   if (!t.attachment_path) throw new HttpError(404, 'אין קובץ');
   streamUpload(res, t.attachment_path, t.attachment_mime, t.attachment_name, false);
 });
+
+// ---------- מודולים: עובדים פעילים וקבוצות, מרכז הודעות ----------
+const ctx = { db, route, requireUser, readBody, send, HttpError, tx, now, esc, setting, smtpCfg, sendMail, broadcast };
+require('./modules/people')(ctx);
+require('./modules/comms')(ctx);
 
 // ---------- static ----------
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
